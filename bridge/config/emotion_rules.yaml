@@ -1,0 +1,343 @@
+# オルテンシア情感映射规则配置
+# Emotion Mapping Rules for Ortensia
+
+# ============================================
+# 支持的表情类型
+# ============================================
+# neutral   - 中性/工作
+# happy     - 开心/成功
+# sad       - 难过/错误
+# angry     - 生气/严重错误
+# relaxed   - 放松/完成
+# surprised - 惊讶/意外
+
+# ============================================
+# 编程事件映射
+# ============================================
+events:
+  # ---------- 文件操作 ----------
+  file_save:
+    emotion: neutral
+    priority: 1
+    messages:
+      - "文件已保存 ✓"
+      - "保存成功~"
+      - "更新了文件"
+    
+  file_create:
+    emotion: happy
+    priority: 2
+    messages:
+      - "创建了新文件！"
+      - "开始新的冒险 ✨"
+      - "新文件准备好了~"
+  
+  file_delete:
+    emotion: neutral
+    priority: 2
+    messages:
+      - "文件已删除"
+      - "清理完成~"
+  
+  # ---------- Git 操作 ----------
+  git_commit:
+    emotion: happy
+    priority: 5
+    messages:
+      - "太棒了！代码提交成功 ✨"
+      - "又完成一个功能 🎉"
+      - "提交完成！"
+      - "干得漂亮！"
+    context_aware: true
+    
+  git_push:
+    emotion: happy
+    priority: 6
+    messages:
+      - "Push 成功！代码已同步 🚀"
+      - "完美！推送到远程了"
+      - "同步完成~"
+  
+  git_merge:
+    emotion: relaxed
+    priority: 7
+    messages:
+      - "合并完成！"
+      - "分支合并成功 ✓"
+  
+  git_conflict:
+    emotion: sad
+    priority: 8
+    messages:
+      - "哎呀，有冲突需要解决..."
+      - "别担心，我们一起处理冲突~"
+  
+  # ---------- AI 工作事件 ----------
+  ai_start:
+    emotion: neutral
+    priority: 3
+    messages:
+      - "让我想想..."
+      - "开始工作了~"
+      - "分析中..."
+    voice_enabled: false
+  
+  ai_thinking:
+    emotion: neutral
+    priority: 2
+    messages:
+      - "正在思考..."
+      - "嗯..."
+    voice_enabled: false
+  
+  ai_complete:
+    emotion: happy
+    priority: 5
+    messages:
+      - "完成啦！✨"
+      - "搞定了 🎉"
+      - "任务完成~"
+  
+  # ---------- 错误事件 ----------
+  syntax_error:
+    emotion: sad
+    priority: 7
+    messages:
+      - "哎呀，有语法错误..."
+      - "这里有个小问题~"
+      - "检查一下语法吧"
+  
+  runtime_error:
+    emotion: sad
+    priority: 8
+    messages:
+      - "运行时出错了..."
+      - "别担心，看看堆栈信息"
+  
+  build_error:
+    emotion: angry
+    priority: 9
+    messages:
+      - "编译失败了 😤"
+      - "构建出错，检查一下配置吧"
+  
+  critical_error:
+    emotion: angry
+    priority: 10
+    messages:
+      - "哇！这是个严重错误！"
+      - "需要马上处理这个问题！"
+  
+  # ---------- 测试事件 ----------
+  test_start:
+    emotion: neutral
+    priority: 3
+    messages:
+      - "开始运行测试..."
+      - "测试启动~"
+  
+  test_pass:
+    emotion: happy
+    priority: 6
+    messages:
+      - "测试通过！✅"
+      - "所有测试都成功了 🎉"
+      - "测试完美通过~"
+  
+  test_fail:
+    emotion: sad
+    priority: 7
+    messages:
+      - "测试失败了..."
+      - "有些测试没通过，看看哪里出问题了"
+  
+  # ---------- 代码审查 ----------
+  code_review_start:
+    emotion: neutral
+    priority: 3
+    messages:
+      - "开始代码审查..."
+      - "让我看看代码质量~"
+  
+  code_review_good:
+    emotion: happy
+    priority: 5
+    messages:
+      - "代码写得很好！👍"
+      - "质量很高~"
+  
+  code_review_issues:
+    emotion: sad
+    priority: 6
+    messages:
+      - "发现了一些可以改进的地方"
+      - "有些问题需要处理~"
+  
+  # ---------- 调试事件 ----------
+  breakpoint_hit:
+    emotion: neutral
+    priority: 4
+    messages:
+      - "断点命中了"
+      - "程序暂停~"
+  
+  debug_start:
+    emotion: neutral
+    priority: 3
+    messages:
+      - "开始调试..."
+      - "开始追踪问题~"
+  
+  debug_complete:
+    emotion: relaxed
+    priority: 5
+    messages:
+      - "调试结束~"
+      - "Bug 找到了吗？"
+  
+  bug_found:
+    emotion: surprised
+    priority: 7
+    messages:
+      - "找到 Bug 了！"
+      - "哇！原来问题在这里"
+  
+  bug_fixed:
+    emotion: happy
+    priority: 8
+    messages:
+      - "Bug 修复完成！🎉"
+      - "太好了！问题解决了"
+  
+  # ---------- 性能相关 ----------
+  performance_slow:
+    emotion: sad
+    priority: 6
+    messages:
+      - "性能有点慢..."
+      - "需要优化一下~"
+  
+  performance_improved:
+    emotion: happy
+    priority: 7
+    messages:
+      - "性能提升了！⚡"
+      - "优化成功~"
+  
+  # ---------- 重构事件 ----------
+  refactor_start:
+    emotion: neutral
+    priority: 4
+    messages:
+      - "开始重构代码..."
+      - "让代码更优雅~"
+  
+  refactor_complete:
+    emotion: relaxed
+    priority: 6
+    messages:
+      - "重构完成！"
+      - "代码更清晰了 ✨"
+  
+  # ---------- 时间相关 ----------
+  work_start:
+    emotion: happy
+    priority: 3
+    messages:
+      - "早上好！开始新的一天 ☀️"
+      - "准备好编程了吗？"
+      - "新的一天，加油！"
+  
+  work_break:
+    emotion: relaxed
+    priority: 4
+    messages:
+      - "休息一下吧~"
+      - "站起来活动活动 ☕"
+      - "放松一下眼睛~"
+  
+  work_complete:
+    emotion: happy
+    priority: 5
+    messages:
+      - "今天辛苦啦！"
+      - "干得漂亮！好好休息~"
+      - "一天的工作完成了 🌙"
+  
+  # ---------- 特殊事件 ----------
+  celebration:
+    emotion: happy
+    priority: 9
+    messages:
+      - "太棒了！值得庆祝 🎉"
+      - "恭喜恭喜！"
+      - "干得漂亮！✨"
+  
+  surprise:
+    emotion: surprised
+    priority: 8
+    messages:
+      - "哇！真厉害！"
+      - "没想到呢~"
+      - "太意外了！"
+  
+  thinking:
+    emotion: neutral
+    priority: 2
+    messages:
+      - "让我想想..."
+      - "嗯..."
+      - "思考中..."
+  
+  greeting:
+    emotion: happy
+    priority: 3
+    messages:
+      - "你好呀！👋"
+      - "很高兴见到你~"
+      - "欢迎回来！"
+
+# ============================================
+# 上下文感知规则
+# ============================================
+context_rules:
+  # 连续成功
+  consecutive_success:
+    threshold: 3
+    emotion: happy
+    messages:
+      - "连续成功！状态真好 🔥"
+      - "今天效率超高啊！"
+      - "势如破竹！"
+  
+  # 连续失败
+  consecutive_failure:
+    threshold: 3
+    emotion: sad
+    messages:
+      - "别灰心，慢慢来~"
+      - "休息一下吧，放松放松"
+      - "我相信你一定能解决的！"
+
+# ============================================
+# 表情持续时间（秒）
+# ============================================
+emotion_duration:
+  neutral: 0
+  happy: 5
+  sad: 8
+  angry: 10
+  relaxed: 6
+  surprised: 4
+
+# ============================================
+# 语音配置
+# ============================================
+voice:
+  enabled: true
+  volume: 0.7
+  muted_events:
+    - ai_start
+    - ai_thinking
+    - file_save
+

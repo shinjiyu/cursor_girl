@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+out/
+*.tsbuildinfo
+
+# TTS 输出
+bridge/tts_output/*.wav
+bridge/tts_output/*.aiff
+bridge/tts_output/*.mp3
+
+# 日志
+*.log
+logs/
+/tmp/
+
+# 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+
+# 模型文件（太大）
+bridge/asset/*.safetensors
+bridge/asset/gpt/*.safetensors
+bridge/asset/tokenizer/
+
+# VRM 模型（可选，如果太大可以忽略）
+# *.vrm
+

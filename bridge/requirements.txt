@@ -1,0 +1,12 @@
+# Event Bridge 依赖包
+# Python >= 3.10
+
+# WebSocket 客户端
+websockets>=12.0
+
+# YAML 配置解析
+pyyaml>=6.0.1
+
+# 异步 HTTP 客户端（可选）
+aiohttp>=3.9.3
+

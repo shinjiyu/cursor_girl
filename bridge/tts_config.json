@@ -1,0 +1,42 @@
+{
+  "_comment": "TTS 配置文件",
+  
+  "engine": "macos",
+  
+  "macos": {
+    "voice": "meijia",
+    "rate": 220,
+    "output_dir": "tts_output"
+  },
+  
+  "chattts": {
+    "model_path": "auto",
+    "compile": false,
+    "temperature": 0.3,
+    "output_dir": "tts_output"
+  },
+  
+  "paddlespeech": {
+    "model": "fastspeech2_aishell3",
+    "vocoder": "pwgan_aishell3",
+    "speaker_id": 0,
+    "sample_rate": 24000,
+    "output_dir": "tts_output"
+  },
+  
+  "edge": {
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "rate": "+0%",
+    "volume": "+0%",
+    "pitch": "+0Hz",
+    "output_dir": "tts_output"
+  },
+  
+  "azure": {
+    "subscription_key": "",
+    "region": "eastasia",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "output_dir": "tts_output"
+  }
+}
+
