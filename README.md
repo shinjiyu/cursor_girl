@@ -8,6 +8,7 @@
 
 ## ✨ 特性
 
+- 🎣 **Cursor Hooks 集成** - 自动感知文件保存、Git 提交等编码事件
 - 🎤 **实时语音合成** - 使用 macOS TTS 生成自然流畅的中文语音
 - 🎭 **表情动画系统** - 根据情绪显示不同表情和动作
 - 🔌 **WebSocket 通信** - 实时接收编码事件并响应
@@ -187,6 +188,85 @@ say -v '?'
 - `relaxed` - 放松
 - `surprised` - 惊讶
 - `excited` - 兴奋
+
+## 🎣 Cursor Hooks (自动编码事件)
+
+オルテンシア已经集成了 Cursor Hooks，可以自动响应你的编码操作！
+
+### 工作原理
+
+```
+保存文件 (Cmd+S) → post-save hook → WebSocket → オルテンシア: "保存成功~" 😊
+Git commit       → post-commit hook → WebSocket → オルテンシア: "太棒了！代码提交成功~" 🎉
+```
+
+### 在本项目中使用
+
+Hooks 已经在本项目中启用！当你：
+- 保存文件 - オルテンシア 会说 "保存成功~"
+- Git commit - オルテンシア 会说 "太棒了！代码提交成功~"
+
+### 在其他项目中使用
+
+```bash
+# 1. 复制 .cursor 目录到你的项目
+cp -r /path/to/cursorgirl/.cursor /path/to/your/project/
+
+# 2. 确保 hooks 可执行
+chmod +x /path/to/your/project/.cursor/hooks/*
+
+# 3. 确保オルテンシア服务运行中
+cd /path/to/cursorgirl && ./START_ALL.sh
+
+# 4. 在 Cursor 中打开你的项目并编码
+# オルテンシア 会自动响应 ✨
+```
+
+### 支持的 Hooks
+
+当前已实现：
+- ✅ **post-save** - 文件保存后
+- ✅ **post-commit** - Git 提交后
+
+计划中：
+- ⏳ pre-commit - 提交前验证
+- ⏳ post-push - 推送后通知
+- ⏳ on-build - 构建时监听
+- ⏳ on-test - 测试时监听
+- ⏳ on-error - 错误时提醒
+
+### 查看 Hook 日志
+
+```bash
+# 实时查看
+tail -f /tmp/cursor-hooks.log
+
+# 查看最近记录
+tail -20 /tmp/cursor-hooks.log
+```
+
+### 自定义配置
+
+编辑 `.cursor/hooks/config.sh`:
+
+```bash
+# WebSocket 服务器地址
+WS_SERVER="ws://localhost:8000/ws"
+
+# 是否启用调试模式
+DEBUG=true
+
+# 是否启用 WebSocket 发送
+ENABLE_WEBSOCKET=true
+```
+
+### 详细文档
+
+- [Cursor Hooks README](./cursor-hooks/README.md) - 完整说明
+- [快速开始指南](./cursor-hooks/QUICKSTART.md) - 5分钟上手
+- [安装指南](./cursor-hooks/INSTALL.md) - 详细安装步骤
+
+---
 
 ## 📝 测试
 

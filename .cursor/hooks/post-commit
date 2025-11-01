@@ -1,0 +1,88 @@
+#!/bin/bash
+# Cursor Hook: post-commit
+# Git commit 后触发
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURSOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# 加载工具函数
+source "${CURSOR_ROOT}/lib/hook_utils.sh"
+
+# 初始化
+init_log
+log_info "========================================="
+log_info "触发 Hook: post-commit"
+log_info "========================================="
+
+# 检查是否在 Git 仓库中
+if ! is_git_repo; then
+    log_error "错误: 不在 Git 仓库中"
+    exit 1
+fi
+
+# 获取 commit 信息
+COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null)
+COMMIT_MESSAGE=$(git log -1 --pretty=%B 2>/dev/null | head -1)
+COMMIT_AUTHOR=$(git log -1 --pretty=%an 2>/dev/null)
+BRANCH=$(git branch --show-current 2>/dev/null)
+
+# 获取修改统计
+FILES_CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | wc -l | tr -d ' ')
+INSERTIONS=$(git diff-tree --no-commit-id --numstat -r HEAD 2>/dev/null | awk '{sum+=$1} END {print sum}')
+DELETIONS=$(git diff-tree --no-commit-id --numstat -r HEAD 2>/dev/null | awk '{sum+=$2} END {print sum}')
+
+log_info "Commit: ${COMMIT_HASH}"
+log_info "消息: ${COMMIT_MESSAGE}"
+log_info "分支: ${BRANCH}"
+log_info "文件: ${FILES_CHANGED} 个修改"
+log_info "变更: +${INSERTIONS}/-${DELETIONS}"
+
+# 构建事件数据 JSON
+EVENT_TYPE="git_commit"
+EVENT_DATA=$(cat <<EOF
+{
+    "commit": "${COMMIT_HASH}",
+    "message": "$(json_escape "$COMMIT_MESSAGE")",
+    "author": "${COMMIT_AUTHOR}",
+    "branch": "${BRANCH}",
+    "files_changed": ${FILES_CHANGED},
+    "insertions": ${INSERTIONS},
+    "deletions": ${DELETIONS}
+}
+EOF
+)
+
+log_debug "事件数据: ${EVENT_DATA}"
+
+# 发送到オルテンシア
+log_info "发送事件到オルテンシア..."
+
+load_config
+
+if [ -f "${VENV_PATH}/bin/activate" ]; then
+    source "${VENV_PATH}/bin/activate"
+    
+    python "${CURSOR_ROOT}/lib/websocket_sender.py" \
+        --event "${EVENT_TYPE}" \
+        --message "${COMMIT_MESSAGE}" \
+        --data "${EVENT_DATA}" \
+        2>> "${LOG_FILE}"
+    
+    SEND_RESULT=$?
+    deactivate
+    
+    if [ $SEND_RESULT -eq 0 ]; then
+        log_info "✅ post-commit hook 执行成功"
+    else
+        log_error "❌ post-commit hook 执行失败 (exit code: ${SEND_RESULT})"
+        exit $SEND_RESULT
+    fi
+else
+    log_error "❌ Python 虚拟环境不存在: ${VENV_PATH}"
+    exit 1
+fi
+
+log_info "========================================="
+exit 0
+
