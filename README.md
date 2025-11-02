@@ -208,9 +208,25 @@ Hooks 已经在本项目中启用！当你：
 
 ### 在其他项目中使用
 
+#### 方法 A: 使用部署脚本（推荐）
+
+```bash
+# 1. 部署 hooks 到你的项目
+cd /path/to/cursorgirl/cursor-hooks
+./deploy.sh /path/to/your/project
+
+# 2. 确保オルテンシア服务运行中
+cd /path/to/cursorgirl && ./START_ALL.sh
+
+# 3. 在 Cursor 中打开你的项目并编码
+# オルテンシア 会自动响应 ✨
+```
+
+#### 方法 B: 手动复制
+
 ```bash
 # 1. 复制 .cursor 目录到你的项目
-cp -r /path/to/cursorgirl/.cursor /path/to/your/project/
+cp -r /path/to/cursorgirl/cursor-hooks/.cursor /path/to/your/project/
 
 # 2. 确保 hooks 可执行
 chmod +x /path/to/your/project/.cursor/hooks/*
@@ -220,6 +236,13 @@ cd /path/to/cursorgirl && ./START_ALL.sh
 
 # 4. 在 Cursor 中打开你的项目并编码
 # オルテンシア 会自动响应 ✨
+```
+
+#### 卸载 Hooks
+
+```bash
+cd /path/to/cursorgirl/cursor-hooks
+./undeploy.sh /path/to/your/project
 ```
 
 ### 支持的 Hooks

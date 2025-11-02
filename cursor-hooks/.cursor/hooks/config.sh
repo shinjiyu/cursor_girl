@@ -4,8 +4,13 @@
 # WebSocket 服务器地址
 WS_SERVER="ws://localhost:8000/ws"
 
+# 自动检测 オルテンシア 项目路径
+# 假设 .cursor 在项目根目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
 # オルテンシア Bridge 路径
-BRIDGE_PATH="/Users/user/Documents/ cursorgirl/bridge"
+BRIDGE_PATH="${PROJECT_ROOT}/bridge"
 
 # Python 虚拟环境路径
 VENV_PATH="${BRIDGE_PATH}/venv"

@@ -60,17 +60,39 @@ cursor-hooks/
 
 ## 🚀 使用方法
 
-### 1. 安装 Hooks
+### 1. 部署 Hooks 到项目
+
+#### 方法 A: 使用部署脚本（推荐）
+
+```bash
+# 部署到当前オルテンシア项目
+cd cursor-hooks
+./deploy.sh ..
+
+# 部署到其他项目
+cd cursor-hooks
+./deploy.sh /path/to/your/project
+```
+
+#### 方法 B: 手动复制
 
 ```bash
 # 复制 hooks 到项目根目录
-cp -r .cursor /path/to/your/project/
+cp -r cursor-hooks/.cursor /path/to/your/project/
 
 # 确保 hooks 可执行
 chmod +x /path/to/your/project/.cursor/hooks/*
 ```
 
-### 2. 测试 Hooks
+### 2. 卸载 Hooks
+
+```bash
+# 从项目中移除 hooks
+cd cursor-hooks
+./undeploy.sh /path/to/your/project
+```
+
+### 3. 测试 Hooks
 
 ```bash
 # 测试单个 hook

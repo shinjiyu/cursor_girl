@@ -1,6 +1,6 @@
 #!/bin/bash
-# Cursor Hook: post-save
-# 文件保存后触发
+# Cursor Hook: on-test
+# 测试开始时触发
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,41 +12,32 @@ source "${CURSOR_ROOT}/lib/hook_utils.sh"
 # 初始化
 init_log
 log_info "========================================="
-log_info "触发 Hook: post-save"
+log_info "触发 Hook: on-test"
 log_info "========================================="
 
-# 获取参数
-FILE_PATH="$1"
-WORKING_DIR="$2"
+# 获取测试命令
+TEST_COMMAND="$1"
+TEST_TYPE="${2:-unit}"
 
-if [ -z "$FILE_PATH" ]; then
-    log_error "错误: 未提供文件路径"
-    exit 1
-fi
-
-# 获取文件信息
-FILENAME=$(get_filename "$FILE_PATH")
-FILE_TYPE=$(get_file_type "$FILE_PATH")
-RELATIVE_PATH=$(get_relative_path "$FILE_PATH" "$WORKING_DIR")
-
-log_info "文件: ${FILENAME}"
-log_info "类型: ${FILE_TYPE}"
-log_info "路径: ${RELATIVE_PATH}"
+log_info "测试命令: ${TEST_COMMAND}"
+log_info "测试类型: ${TEST_TYPE}"
 
 # 构建事件数据
-EVENT_TYPE="file_save"
-EVENT_DATA=$(build_json_message "$EVENT_TYPE" \
-    "file" "$RELATIVE_PATH" \
-    "filename" "$FILENAME" \
-    "type" "$FILE_TYPE" \
-    "working_dir" "$WORKING_DIR")
+EVENT_TYPE="test_start"
+EVENT_DATA=$(cat <<EOF
+{
+    "command": "$(json_escape "$TEST_COMMAND")",
+    "type": "${TEST_TYPE}",
+    "timestamp": $(date +%s)
+}
+EOF
+)
 
 log_debug "事件数据: ${EVENT_DATA}"
 
 # 发送到オルテンシア
 log_info "发送事件到オルテンシア..."
 
-# 使用 Python 发送器
 load_config
 
 if [ -f "${VENV_PATH}/bin/activate" ]; then
@@ -54,21 +45,20 @@ if [ -f "${VENV_PATH}/bin/activate" ]; then
     
     python "${CURSOR_ROOT}/lib/websocket_sender.py" \
         --event "${EVENT_TYPE}" \
-        --file "${RELATIVE_PATH}" \
+        --message "开始测试..." \
+        --data "${EVENT_DATA}" \
         2>> "${LOG_FILE}"
     
     SEND_RESULT=$?
     deactivate
     
     if [ $SEND_RESULT -eq 0 ]; then
-        log_info "✅ post-save hook 执行成功"
+        log_info "✅ on-test hook 执行成功"
     else
-        log_error "❌ post-save hook 执行失败 (exit code: ${SEND_RESULT})"
-        exit $SEND_RESULT
+        log_error "❌ on-test hook 执行失败 (exit code: ${SEND_RESULT})"
     fi
 else
     log_error "❌ Python 虚拟环境不存在: ${VENV_PATH}"
-    exit 1
 fi
 
 log_info "========================================="

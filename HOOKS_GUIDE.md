@@ -4,6 +4,29 @@
 
 オルテンシア 现已支持 **10 个 Cursor Hooks**，可以自动响应你的所有编码操作！
 
+## 🚀 快速部署
+
+### 部署到当前项目
+
+```bash
+cd cursor-hooks
+./deploy.sh ..
+```
+
+### 部署到其他项目
+
+```bash
+cd cursor-hooks
+./deploy.sh /path/to/your/project
+```
+
+### 卸载
+
+```bash
+cd cursor-hooks
+./undeploy.sh /path/to/your/project
+```
+
 ---
 
 ## 🎣 支持的 Hooks (10个)
