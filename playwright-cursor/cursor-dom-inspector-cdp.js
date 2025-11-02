@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Cursor DOM Inspector - 使用 Playwright 检查 Cursor 的 DOM 结构
- * Cursor DOM Inspector - Inspect Cursor's DOM structure using Playwright
+ * Cursor DOM Inspector (CDP 版本)
+ * 连接到已运行的 Cursor 实例
+ * 
+ * 使用方法：
+ * 1. 手动启动 Cursor: /Applications/Cursor.app/Contents/MacOS/Cursor --remote-debugging-port=9222
+ * 2. 运行此脚本: node cursor-dom-inspector-cdp.js
  */
 
-const { _electron: electron } = require('@playwright/test');
+const { chromium } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
@@ -31,75 +35,45 @@ function printSeparator(title = '') {
   }
 }
 
-// 主函数
 async function main() {
-  printSeparator('🔍 Cursor DOM Inspector');
+  printSeparator('🔍 Cursor DOM Inspector (CDP Mode)');
+  console.log();
+  console.log('💡 This script connects to a running Cursor instance');
+  console.log();
+  console.log('📝 To start Cursor in debug mode:');
+  console.log('   /Applications/Cursor.app/Contents/MacOS/Cursor --remote-debugging-port=9222');
+  console.log();
+  printSeparator();
   console.log();
 
-  // Cursor 路径（macOS）
-  const cursorPath = '/Applications/Cursor.app/Contents/MacOS/Cursor';
-  
-  console.log(`📍 Cursor Path: ${cursorPath}`);
-  console.log();
-
-  // 检查 Cursor 是否存在
-  if (!fs.existsSync(cursorPath)) {
-    console.error(`❌ Cursor not found at ${cursorPath}`);
-    console.error('💡 Please install Cursor or update the path in the script');
-    process.exit(1);
-  }
-
-  console.log('🚀 Starting Cursor with Playwright...');
-
-  let electronApp;
   try {
-    // 启动 Electron 应用
-    console.log('⏳ Launching Electron app...');
-    electronApp = await electron.launch({
-      executablePath: cursorPath,
-      // 可选参数 - 尝试禁用一些可能导致问题的功能
-      args: [
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox'
-      ],
-      // 增加超时时间
-      timeout: 60000
-    });
-
-    console.log('✅ Electron app launched');
-    console.log(`   PID: ${electronApp.process().pid}`);
+    console.log('🔌 Connecting to Chrome DevTools Protocol on port 9222...');
     
-    // 等待窗口出现（使用事件而不是 firstWindow）
-    console.log('⏳ Waiting for window to appear...');
+    // 连接到 CDP
+    const browser = await chromium.connectOverCDP('http://localhost:9222');
+    console.log('✅ Connected to CDP');
     
-    let page;
-    try {
-      // 尝试获取现有窗口
-      const windows = electronApp.windows();
-      if (windows.length > 0) {
-        page = windows[0];
-        console.log(`✅ Found ${windows.length} existing window(s)`);
-      } else {
-        // 等待新窗口
-        page = await electronApp.waitForEvent('window', { timeout: 30000 });
-        console.log('✅ New window appeared');
-      }
-    } catch (e) {
-      console.log('⚠️  No window appeared, trying firstWindow()...');
-      page = await electronApp.firstWindow();
+    // 获取所有上下文
+    const contexts = browser.contexts();
+    console.log(`📱 Found ${contexts.length} context(s)`);
+    
+    if (contexts.length === 0) {
+      console.error('❌ No contexts found. Make sure Cursor is running with --remote-debugging-port=9222');
+      process.exit(1);
     }
     
-    // 等待页面加载
-    console.log('⏳ Waiting for page to load...');
-    await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
+    // 获取所有页面
+    const pages = contexts[0].pages();
+    console.log(`📄 Found ${pages.length} page(s)`);
     
-    console.log('✅ Cursor started successfully!');
-    console.log();
-
-    // 等待几秒让 UI 完全加载
-    console.log('⏳ Waiting 5 seconds for UI to fully load...');
-    await page.waitForTimeout(5000);
+    if (pages.length === 0) {
+      console.error('❌ No pages found');
+      process.exit(1);
+    }
+    
+    // 使用第一个页面
+    const page = pages[0];
+    console.log(`✅ Using page: ${await page.title()}`);
     console.log();
 
     // ==================== 获取页面信息 ====================
@@ -324,28 +298,26 @@ async function main() {
     console.log();
 
     // ==================== 完成 ====================
-    printSeparator('✅ Test completed successfully!');
+    printSeparator('✅ Inspection completed successfully!');
     console.log();
     console.log(`📁 All outputs saved to: ${OUTPUT_DIR}`);
     console.log();
 
-    // 等待 3 秒后关闭
-    console.log('⏳ Closing in 3 seconds...');
-    await page.waitForTimeout(3000);
+    // 断开连接
+    await browser.close();
+    console.log('✅ Disconnected from CDP');
 
   } catch (error) {
     console.error('❌ Error:', error.message);
-    console.error(error.stack);
-    process.exit(1);
-  } finally {
-    // 关闭应用
-    if (electronApp) {
-      printSeparator('🛑 Stopping');
-      console.log();
-      await electronApp.close();
-      console.log('✅ Cursor closed');
-      console.log();
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('connect')) {
+      console.error();
+      console.error('💡 Make sure Cursor is running with:');
+      console.error('   /Applications/Cursor.app/Contents/MacOS/Cursor --remote-debugging-port=9222');
+      console.error();
+      console.error('   Or add an alias to your shell:');
+      console.error('   alias cursor-debug="/Applications/Cursor.app/Contents/MacOS/Cursor --remote-debugging-port=9222"');
     }
+    process.exit(1);
   }
 }
 
