@@ -1,0 +1,78 @@
+#!/bin/bash
+# Cursor Hook: post-push
+# Git push 后触发
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURSOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# 加载工具函数
+source "${CURSOR_ROOT}/lib/hook_utils.sh"
+
+# 初始化
+init_log
+log_info "========================================="
+log_info "触发 Hook: post-push"
+log_info "========================================="
+
+# 检查是否在 Git 仓库中
+if ! is_git_repo; then
+    log_error "错误: 不在 Git 仓库中"
+    exit 1
+fi
+
+# 获取推送信息
+REMOTE=$1
+BRANCH=$(git branch --show-current 2>/dev/null)
+LAST_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
+COMMIT_MESSAGE=$(git log -1 --pretty=%B 2>/dev/null | head -1)
+
+log_info "Remote: ${REMOTE}"
+log_info "分支: ${BRANCH}"
+log_info "最后提交: ${LAST_COMMIT}"
+
+# 构建事件数据
+EVENT_TYPE="post_push"
+EVENT_DATA=$(cat <<EOF
+{
+    "remote": "${REMOTE}",
+    "branch": "${BRANCH}",
+    "commit": "${LAST_COMMIT}",
+    "message": "$(json_escape "$COMMIT_MESSAGE")"
+}
+EOF
+)
+
+log_debug "事件数据: ${EVENT_DATA}"
+
+# 发送到オルテンシア
+log_info "发送事件到オルテンシア..."
+
+load_config
+
+if [ -f "${VENV_PATH}/bin/activate" ]; then
+    source "${VENV_PATH}/bin/activate"
+    
+    python "${CURSOR_ROOT}/lib/websocket_sender.py" \
+        --event "${EVENT_TYPE}" \
+        --message "推送到 ${REMOTE}/${BRANCH}" \
+        --data "${EVENT_DATA}" \
+        2>> "${LOG_FILE}"
+    
+    SEND_RESULT=$?
+    deactivate
+    
+    if [ $SEND_RESULT -eq 0 ]; then
+        log_info "✅ post-push hook 执行成功"
+    else
+        log_error "❌ post-push hook 执行失败 (exit code: ${SEND_RESULT})"
+        exit $SEND_RESULT
+    fi
+else
+    log_error "❌ Python 虚拟环境不存在: ${VENV_PATH}"
+    exit 1
+fi
+
+log_info "========================================="
+exit 0
+

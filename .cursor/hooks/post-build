@@ -1,0 +1,77 @@
+#!/bin/bash
+# Cursor Hook: post-build
+# 构建完成后触发
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURSOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# 加载工具函数
+source "${CURSOR_ROOT}/lib/hook_utils.sh"
+
+# 初始化
+init_log
+log_info "========================================="
+log_info "触发 Hook: post-build"
+log_info "========================================="
+
+# 获取构建结果
+BUILD_STATUS="${1:-success}"  # success/failure
+BUILD_COMMAND="$2"
+BUILD_TIME="${3:-0}"
+BUILD_OUTPUT="$4"
+
+log_info "构建状态: ${BUILD_STATUS}"
+log_info "构建命令: ${BUILD_COMMAND}"
+log_info "构建时间: ${BUILD_TIME}s"
+
+# 根据构建结果确定事件类型
+if [ "$BUILD_STATUS" = "success" ]; then
+    EVENT_TYPE="build_success"
+else
+    EVENT_TYPE="build_error"
+fi
+
+# 构建事件数据
+EVENT_DATA=$(cat <<EOF
+{
+    "status": "${BUILD_STATUS}",
+    "command": "$(json_escape "$BUILD_COMMAND")",
+    "duration": ${BUILD_TIME},
+    "output": "$(json_escape "${BUILD_OUTPUT:0:500}")"
+}
+EOF
+)
+
+log_debug "事件数据: ${EVENT_DATA}"
+
+# 发送到オルテンシア
+log_info "发送事件到オルテンシア..."
+
+load_config
+
+if [ -f "${VENV_PATH}/bin/activate" ]; then
+    source "${VENV_PATH}/bin/activate"
+    
+    python "${CURSOR_ROOT}/lib/websocket_sender.py" \
+        --event "${EVENT_TYPE}" \
+        --data "${EVENT_DATA}" \
+        2>> "${LOG_FILE}"
+    
+    SEND_RESULT=$?
+    deactivate
+    
+    if [ $SEND_RESULT -eq 0 ]; then
+        log_info "✅ post-build hook 执行成功"
+    else
+        log_error "❌ post-build hook 执行失败 (exit code: ${SEND_RESULT})"
+        exit $SEND_RESULT
+    fi
+else
+    log_error "❌ Python 虚拟环境不存在: ${VENV_PATH}"
+    exit 1
+fi
+
+log_info "========================================="
+exit 0
+

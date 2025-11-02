@@ -224,16 +224,26 @@ cd /path/to/cursorgirl && ./START_ALL.sh
 
 ### 支持的 Hooks
 
-当前已实现：
-- ✅ **post-save** - 文件保存后
-- ✅ **post-commit** - Git 提交后
+**文件操作** (1个):
+- ✅ **post-save** - 文件保存后触发
 
-计划中：
-- ⏳ pre-commit - 提交前验证
-- ⏳ post-push - 推送后通知
-- ⏳ on-build - 构建时监听
-- ⏳ on-test - 测试时监听
-- ⏳ on-error - 错误时提醒
+**Git 操作** (3个):
+- ✅ **pre-commit** - Git 提交前触发（验证、格式化）
+- ✅ **post-commit** - Git 提交后触发
+- ✅ **post-push** - Git 推送后触发
+
+**构建** (2个):
+- ✅ **on-build** - 构建开始时触发
+- ✅ **post-build** - 构建完成后触发（成功/失败）
+
+**测试** (2个):
+- ✅ **on-test** - 测试开始时触发
+- ✅ **post-test** - 测试完成后触发（通过/失败）
+
+**错误处理** (1个):
+- ✅ **on-error** - 错误发生时触发（语法/运行时/构建/测试错误）
+
+**总计**: ✅ 10 个 Hooks 已实现
 
 ### 查看 Hook 日志
 

@@ -72,20 +72,66 @@ def get_message_for_event(event_type: str, event_data: dict) -> tuple[str, str]:
     Returns:
         (消息文本, 情绪类型)
     """
-    # 默认消息
+    # 默认消息和情绪
     messages = {
+        # 文件操作
         'file_save': ('保存成功~', 'neutral'),
+        'file_create': ('新文件创建成功！', 'happy'),
+        'file_delete': ('文件已删除', 'neutral'),
+        
+        # Git 操作
+        'pre_commit': ('准备提交...', 'neutral'),
         'git_commit': ('太棒了！代码提交成功~', 'happy'),
-        'git_push': ('Push 完成！辛苦了~', 'happy'),
+        'post_push': ('Push 完成！辛苦了~', 'happy'),
+        'git_merge': ('分支合并成功！', 'happy'),
+        'git_conflict': ('遇到冲突了...我们一起解决~', 'sad'),
+        
+        # 构建
+        'build_start': ('开始构建...', 'neutral'),
         'build_success': ('构建成功！', 'happy'),
         'build_error': ('构建失败了...别担心，我们一起修复它~', 'sad'),
+        
+        # 测试
+        'test_start': ('开始测试...', 'neutral'),
         'test_pass': ('测试通过！你真厉害！', 'excited'),
         'test_fail': ('测试失败了...我们再检查一下~', 'sad'),
+        
+        # 错误
+        'syntax_error': ('语法错误...让我帮你看看~', 'sad'),
+        'runtime_error': ('运行时错误...别担心，我们一起调试~', 'sad'),
+        'error': ('出错了...别担心，我们一起修复它~', 'sad'),
+        
+        # 调试
+        'debug_start': ('开始调试...', 'neutral'),
+        'bug_found': ('找到 Bug 了！', 'surprised'),
+        'bug_fixed': ('Bug 修复成功！', 'happy'),
+        
+        # AI 操作
+        'ai_start': ('AI 开始工作了...', 'neutral'),
+        'ai_complete': ('AI 完成了！', 'happy'),
+        'ai_accept': ('接受 AI 建议~', 'happy'),
+        'ai_reject': ('拒绝 AI 建议', 'neutral'),
+        
+        # 性能
+        'performance_slow': ('性能有点慢...我们优化一下~', 'sad'),
+        'performance_improved': ('性能提升了！', 'happy'),
+        
+        # 其他
+        'work_start': ('开始工作！加油~', 'happy'),
+        'work_break': ('休息一下吧~', 'relaxed'),
+        'work_complete': ('工作完成！辛苦了~', 'happy'),
+        'celebration': ('太棒了！值得庆祝！', 'excited'),
     }
     
     # 如果有自定义消息，使用自定义消息
     if 'message' in event_data:
-        return (event_data['message'], 'neutral')
+        # 根据事件类型推断情绪
+        emotion = 'neutral'
+        if 'error' in event_type or 'fail' in event_type:
+            emotion = 'sad'
+        elif 'success' in event_type or 'pass' in event_type or 'complete' in event_type:
+            emotion = 'happy'
+        return (event_data['message'], emotion)
     
     # 从预定义消息中获取
     if event_type in messages:
