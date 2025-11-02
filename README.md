@@ -296,8 +296,90 @@ ENABLE_WEBSOCKET=true
 ### 详细文档
 
 - [Cursor Hooks README](./cursor-hooks/README.md) - 完整说明
-- [快速开始指南](./cursor-hooks/QUICKSTART.md) - 5分钟上手
-- [安装指南](./cursor-hooks/INSTALL.md) - 详细安装步骤
+- [完整 Hooks 指南](./docs/COMPLETE_HOOKS_GUIDE.md) - 所有 Hooks 详解
+
+---
+
+## 🤖 Agent Hooks (Cursor AI Agent 事件)
+
+除了 IDE Event Hooks，オルテンシア 还支持 **Agent Hooks** - 当 Cursor AI Agent 执行操作时自动触发！
+
+### 什么是 Agent Hooks？
+
+Agent Hooks 允许你监控和控制 Cursor AI Agent 的行为：
+- 🔒 Agent 执行命令前进行安全检查
+- 📝 Agent 编辑文件后自动格式化
+- 🔐 Agent 读取敏感文件时请求确认
+- 🎉 Agent 完成任务时庆祝
+
+### 支持的 Agent Hooks (9个)
+
+**命令执行** (2个):
+- ✅ **beforeShellExecution** - Agent 执行命令前（安全检查）
+- ✅ **afterShellExecution** - Agent 执行命令后（审计）
+
+**工具调用** (2个):
+- ✅ **beforeMCPExecution** - Agent 调用工具前（权限检查）
+- ✅ **afterMCPExecution** - Agent 调用工具后（审计）
+
+**文件操作** (2个):
+- ✅ **afterFileEdit** - Agent 编辑文件后（自动格式化）
+- ✅ **beforeReadFile** - Agent 读取文件前（敏感文件保护）
+
+**提示和响应** (2个):
+- ✅ **beforeSubmitPrompt** - Agent 提交提示前（敏感信息检测）
+- ✅ **afterAgentResponse** - Agent 响应后（审计）
+
+**任务控制** (1个):
+- ✅ **stop** - Agent 任务完成时（庆祝或继续）
+
+### Agent Hooks 特性
+
+✨ **所有事件都触发オルテンシア语音** - Agent 的每个操作都有实时语音反馈！
+
+🔐 **安全控制**:
+- 危险命令自动拦截（如 `rm -rf /`）
+- 风险命令需要用户确认
+- 敏感文件访问控制
+
+📊 **详细日志** - 每个 Hook 的执行都有完整日志记录
+
+### 部署 Agent Hooks
+
+Agent Hooks 是全局的，一次部署，所有项目都生效：
+
+```bash
+cd /path/to/cursorgirl/.cursor-agent
+./deploy_agent_hooks.sh
+```
+
+### 查看 Agent Hook 日志
+
+```bash
+# 使用日志查看工具（推荐）
+cd ~/.cursor-agent && ./view_logs.sh
+
+# 或直接查看
+tail -f /tmp/cursor-agent-hooks.log
+```
+
+### Agent Hooks 工作流程
+
+```
+Cursor Agent 执行命令
+    ↓
+beforeShellExecution → 检查安全性 → オルテンシア: "执行命令：ls -la" 🎤
+    ↓
+命令执行
+    ↓
+afterShellExecution → 检查结果 → オルテンシア: "命令完成：ls -la" 🎉
+```
+
+### 更多文档
+
+- [Agent Hooks README](./.cursor-agent/README.md) - 日志系统说明
+- [Agent Hooks 修复报告](./docs/AGENT_HOOKS_FIXED.md) - 技术细节
+- [完整 Hooks 指南](./docs/COMPLETE_HOOKS_GUIDE.md) - 所有 Hooks 详解
 
 ---
 

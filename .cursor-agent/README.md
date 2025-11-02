@@ -1,5 +1,79 @@
 # Cursor Agent Hooks
 
+## 🤖 什么是 Agent Hooks？
+
+Agent Hooks 允许你监控和控制 Cursor AI Agent 的行为，当 Agent 执行各种操作时自动触发。
+
+## 📋 已实现的 Agent Hooks (9个)
+
+| Hook名称 | 类型 | 触发时机 | 功能 |
+|---------|------|---------|------|
+| `beforeShellExecution` | 权限 | Agent 执行命令前 | 安全检查，拦截危险命令 |
+| `afterShellExecution` | 审计 | Agent 执行命令后 | 审计命令执行结果 |
+| `beforeMCPExecution` | 权限 | Agent 调用工具前 | 检查敏感工具 |
+| `afterMCPExecution` | 审计 | Agent 调用工具后 | 审计工具执行结果 |
+| `afterFileEdit` | 审计 | Agent 编辑文件后 | 自动格式化，审计修改 |
+| `beforeReadFile` | 权限 | Agent 读取文件前 | 敏感文件保护 |
+| `beforeSubmitPrompt` | 审计 | Agent 提交提示前 | 检测敏感信息 |
+| `afterAgentResponse` | 审计 | Agent 响应后 | 审计 Agent 响应 |
+| `stop` | 控制 | Agent 任务完成 | 任务完成通知或继续 |
+
+### ✨ 所有事件都触发オルテンシア语音！
+
+每个 Hook 被触发时，オルテンシア 都会：
+- 🎤 **说话** - 实时语音反馈
+- 🎭 **做动作** - 根据情绪显示表情和动作
+- 📊 **记录日志** - 详细的执行日志
+
+## 🚀 部署 Agent Hooks
+
+### 方法 1: 使用部署脚本（推荐）
+
+```bash
+cd /path/to/cursorgirl/.cursor-agent
+./deploy_agent_hooks.sh
+```
+
+脚本会自动：
+1. 复制所有 Hook 脚本到 `~/.cursor-agent/`
+2. 设置正确的执行权限
+3. 创建 `hooks.json` 配置文件
+4. 在 `~/.cursor/` 创建符号链接
+5. 复制包装脚本 `run_hook.sh`
+
+### 方法 2: 手动部署
+
+```bash
+# 1. 创建目录
+mkdir -p ~/.cursor-agent/hooks
+mkdir -p ~/.cursor-agent/lib
+
+# 2. 复制文件
+cp -r hooks/* ~/.cursor-agent/hooks/
+cp -r lib/* ~/.cursor-agent/lib/
+cp hooks.json ~/.cursor-agent/
+cp run_hook.sh ~/.cursor-agent/
+
+# 3. 设置权限
+chmod +x ~/.cursor-agent/hooks/*.py
+chmod +x ~/.cursor-agent/run_hook.sh
+
+# 4. 创建符号链接
+ln -sf ~/.cursor-agent/hooks.json ~/.cursor/hooks.json
+
+# 5. 重启 Cursor
+```
+
+### 验证部署
+
+```bash
+# 检查文件
+ls -la ~/.cursor-agent/hooks/
+
+# 测试 Hook
+./test_agent_hooks.sh
+```
+
 ## 📊 详细日志系统
 
 所有 Agent Hooks 现在都配备了**详细的工作日志**，让你清楚地看到它们被 Cursor 调用时做了什么。
