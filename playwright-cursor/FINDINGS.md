@@ -97,40 +97,88 @@ but still passed to Electron/Chromium.
 
 基于调研结果，以下是可行的替代方案：
 
-### 方案 1: VSCode Extension API ⭐⭐⭐⭐⭐（最推荐）
+### 方案 1: VSCode Extension API ⭐⭐⭐⭐⭐（最推荐但有重大限制）
 
 **原理**: 开发一个 VSCode 扩展，在编辑器内部运行
 
 **优势**:
 - ✅ 官方支持的方式
-- ✅ 完全控制编辑器功能
+- ✅ 完全控制编辑器功能（文件、代码、终端）
 - ✅ 不需要调试模式
 - ✅ 跨平台
 - ✅ 可以精确操作代码
 
-**实现**:
-```typescript
-// 在扩展中
-import * as vscode from 'vscode';
+**⚠️ 重大限制（用户发现）**:
 
-// 插入代码
-const editor = vscode.window.activeTextEditor;
-editor.edit(editBuilder => {
-    editBuilder.insert(position, 'code');
-});
+VSCode Extension 运行在**沙箱环境**中，有严格的访问限制：
 
-// 执行命令
-vscode.commands.executeCommand('workbench.action.files.save');
+1. **Extension 之间完全隔离**
+   - ❌ Extension A 无法访问 Extension B 的 UI
+   - ❌ Extension A 无法直接调用 Extension B 的函数
+   - ❌ 无法访问其他 extension 的内部状态
 
-// WebSocket 通信
-const ws = new WebSocket('ws://localhost:8000/ws');
-ws.onmessage = (event) => {
-    const command = JSON.parse(event.data);
-    handleCommand(command);
-};
+2. **无法访问 DOM**
+   - ❌ 无法使用 `document.querySelector()`
+   - ❌ 无法直接操作 webview 内容
+   - ❌ 只能通过 VSCode API 交互
+
+3. **Cursor AI 的访问问题**
+   
+   如果 Cursor AI 是作为 extension 或 webview 实现的：
+   - ❌ **其他 extension 可能无法直接访问 Cursor AI 的 UI**
+   - ❌ **无法直接操作 AI 聊天框**
+   - ⚠️ 只能通过 Cursor 暴露的命令 API（如果有的话）
+
+**架构隔离示意**:
+```
+┌─────────────────────────────────────────┐
+│  Cursor 主进程                           │
+│                                          │
+│  ┌────────────────────────────────────┐ │
+│  │  Editor Core (可访问)              │ │
+│  │  - Monaco Editor ✅                 │ │
+│  │  - File System ✅                   │ │
+│  │  - Commands ✅                      │ │
+│  └────────────────────────────────────┘ │
+│                                          │
+│  ┌──────────┐  ┌────────┐              │
+│  │Your      │  │Cursor  │              │
+│  │Extension │  │  AI    │              │
+│  │  (隔离)  │  │ (隔离) │              │
+│  └────┬─────┘  └───┬────┘              │
+│       │            │                    │
+│       │            ❌ 无法直接访问      │
+│       │                                 │
+│       └────────────┐                    │
+│              VSCode API                 │
+│         (只能通过 API 通信)             │
+└─────────────────────────────────────────┘
 ```
 
-**待验证**: Cursor 是否完全兼容 VSCode Extension API
+**可能的解决方案**:
+
+1. **查找 Cursor 的命令 API**
+   ```typescript
+   // 如果 Cursor 提供了这样的命令：
+   vscode.commands.executeCommand('cursor.chat', 'your prompt');
+   vscode.commands.executeCommand('cursor.ai.generate', { prompt: '...' });
+   ```
+
+2. **通过快捷键模拟**（如果没有 API）
+   ```typescript
+   // 在 extension 中模拟快捷键
+   vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+     text: '\x1b[27;5;12~'  // 模拟 Cmd+L
+   });
+   ```
+
+**待验证的关键问题**:
+1. ❓ Cursor AI 是作为 extension、webview 还是核心功能实现的？
+2. ❓ Cursor 是否暴露了 AI 相关的命令 API？
+3. ❓ Cursor 是否完全兼容 VSCode Extension API？
+
+**验证方法**: 
+使用 `test-cursor-commands.js` 在 Cursor 开发者工具中探索可用的命令
 
 ### 方案 2: 跨平台 UI 自动化 ⭐⭐⭐
 
