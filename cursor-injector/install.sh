@@ -1,5 +1,5 @@
 #!/bin/bash
-# V6: 修复 WebSocketServer 构造函数名称
+# V7: 修复 Promise 处理，支持异步代码执行
 
 MAIN_JS="/Applications/Cursor.app/Contents/Resources/app/out/main.js"
 BACKUP_JS="/Applications/Cursor.app/Contents/Resources/app/out/main.js.ortensia.backup"
@@ -34,7 +34,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
     }
     
     log('========================================');
-    log('🎉 Ortensia V6 启动中...');
+    log('🎉 Ortensia V7 启动中...');
     log(`进程 ID: ${process.pid}`);
     
     // 等待 3 秒
@@ -77,11 +77,18 @@ cat > "$MAIN_JS" << 'INJECT_END'
                     const code = message.toString();
                     log(`📥 收到代码: ${code.substring(0, 50)}...`);
                     
-                    const result = eval(code);
+                    // 执行代码
+                    let result = eval(code);
+                    
+                    // 如果是 Promise，等待其完成
+                    if (result && typeof result.then === 'function') {
+                        result = await result;
+                    }
+                    
                     const response = { success: true, result: String(result) };
                     ws.send(JSON.stringify(response));
                     
-                    log(`✅ 执行成功，结果: ${String(result).substring(0, 50)}`);
+                    log(`✅ 执行成功: ${String(result).substring(0, 100)}`);
                 } catch (error) {
                     log(`❌ 执行错误: ${error.message}`);
                     ws.send(JSON.stringify({ success: false, error: error.message }));
@@ -129,13 +136,13 @@ codesign --force --deep --sign - "/Applications/Cursor.app" 2>/dev/null
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ V6 已注入 - 修复了 WebSocketServer 构造函数问题！"
+echo "  ✅ V7 已注入 - 支持异步代码执行！"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "修复内容:"
-echo "  ✅ 使用正确的 ws.WebSocketServer (不是 WebSocket.Server)"
-echo "  ✅ 增强的错误处理"
-echo "  ✅ 更详细的日志"
+echo "V7 新功能:"
+echo "  ✅ 自动检测并等待 Promise 完成"
+echo "  ✅ 支持访问渲染进程 DOM (通过 executeJavaScript)"
+echo "  ✅ 可以执行异步 Electron API 调用"
 echo ""
 echo "日志文件: $LOG_FILE"
 echo ""

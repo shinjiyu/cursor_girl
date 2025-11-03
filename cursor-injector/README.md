@@ -76,6 +76,29 @@ cat /tmp/cursor_ortensia.log
 
 ## 🎮 使用
 
+### 快速演示：DOM 访问
+
+运行演示脚本看看能做什么：
+
+```bash
+python3 demo-dom-access.py
+```
+
+输出示例：
+```
+📄 获取当前文件名
+  ➜ ortensia_cursor_client.py — cursorgirl
+
+🔢 统计 DOM 元素数量
+  ➜ 2745
+
+🎨 获取页面背景色
+  ➜ color(srgb 0.0784314 0.0784314 0.0784314 / 0.8)
+
+📊 检查 VSCode API
+  ➜ ✅ VSCode API 可用
+```
+
 ### 基础测试
 
 ```bash
@@ -325,5 +348,45 @@ killall Cursor
 - ✅ 从 Python 动态执行任何 JavaScript 代码
 - ✅ 访问所有 Cursor 内部 API
 - ✅ 控制编辑器、文件、AI
+- ✅ **访问渲染进程 DOM 结构**（通过 `BrowserWindow.webContents.executeJavaScript`）
+- ✅ **调用 VSCode 扩展 API**（在渲染进程中）
+- ✅ **自动处理异步代码**（自动 await Promise）
 - ✅ 集成到 Ortensia 系统
+
+## 🧪 技术细节
+
+### 注入位置
+- **主进程**: 注入到 `/Applications/Cursor.app/Contents/Resources/app/out/main.js`
+- **执行上下文**: Electron 主进程（Node.js 环境）
+- **访问渲染进程**: 通过 `BrowserWindow.webContents.executeJavaScript()`
+
+### Promise 处理
+注入的代码会自动检测并等待 Promise：
+
+```javascript
+let result = eval(code);
+if (result && typeof result.then === 'function') {
+    result = await result;  // 自动等待
+}
+```
+
+这意味着你可以直接发送异步代码，无需手动处理 Promise。
+
+### DOM 访问示例
+
+```python
+# 获取页面标题
+code = '''
+(async () => {
+    const { BrowserWindow } = await import("electron");
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+        return await windows[0].webContents.executeJavaScript("document.title");
+    }
+    return null;
+})()
+'''
+result = await client.eval_code(code)
+print(result)  # "filename.py — cursorgirl"
+```
 
