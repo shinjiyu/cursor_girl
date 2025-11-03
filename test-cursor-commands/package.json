@@ -1,0 +1,26 @@
+{
+  "name": "test-cursor-commands",
+  "displayName": "Test Cursor Commands",
+  "description": "测试 Cursor 可用命令",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "test.listCursorCommands",
+        "title": "Test: List All Cursor Commands"
+      },
+      {
+        "command": "test.testCursorCommands",
+        "title": "Test: Test All Cursor Commands"
+      }
+    ]
+  }
+}
+
