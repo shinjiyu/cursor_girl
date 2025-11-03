@@ -10,7 +10,7 @@ import sys
 import websockets
 
 
-class OrtensiaC​ursorClient:
+class OrtensiaCursorClient:
     def __init__(self, host='localhost', port=9224):
         self.uri = f'ws://{host}:{port}'
         self.ws = None
@@ -138,7 +138,7 @@ class OrtensiaC​ursorClient:
 
 async def test_connection():
     """测试连接"""
-    client = OrtensiaC​ursorClient()
+    client = OrtensiaCursorClient()
     
     if not await client.connect():
         return
@@ -169,7 +169,7 @@ async def test_connection():
 
 async def interactive_mode():
     """交互模式"""
-    client = OrtensiaC​ursorClient()
+    client = OrtensiaCursorClient()
     
     if not await client.connect():
         return
@@ -269,4 +269,3 @@ if __name__ == '__main__':
     else:
         # 默认：交互模式
         asyncio.run(interactive_mode())
-
