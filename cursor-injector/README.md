@@ -75,7 +75,11 @@ chmod +x install.sh uninstall.sh
 ### 基础测试
 
 ```bash
-# 测试连接
+# 测试连接（使用启动脚本）
+./ortensia-cursor.sh ping
+
+# 或者直接使用 bridge venv 的 Python
+cd ../bridge && source venv/bin/activate && cd ../cursor-injector
 python3 ortensia_cursor_client.py ping
 ```
 
@@ -83,7 +87,10 @@ python3 ortensia_cursor_client.py ping
 
 ```bash
 # 启动交互模式
-python3 ortensia_cursor_client.py interactive
+./ortensia-cursor.sh interactive
+
+# 或者
+./ortensia-cursor.sh i
 ```
 
 然后可以输入命令：
