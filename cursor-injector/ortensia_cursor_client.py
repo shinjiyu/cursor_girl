@@ -11,7 +11,7 @@ import websockets
 
 
 class OrtensiaCursorClient:
-    def __init__(self, host='localhost', port=9224):
+    def __init__(self, host='localhost', port=9876):
         self.uri = f'ws://{host}:{port}'
         self.ws = None
     
