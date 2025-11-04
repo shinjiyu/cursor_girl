@@ -1,477 +1,298 @@
-# オルテンシア - AI 编程助手 🎀
+# Ortensia - Cursor IDE 自动化控制系统
 
-一个基于 AITuber Kit 的虚拟编程助手，能够实时响应编码事件并通过语音和表情与你互动。
+**版本**: V9  
+**状态**: ✅ 核心功能完成  
+**最后更新**: 2025-11-04
 
-![オルテンシア](https://img.shields.io/badge/Status-Working-success)
-![TTS](https://img.shields.io/badge/TTS-macOS-blue)
-![WebSocket](https://img.shields.io/badge/WebSocket-Active-green)
+---
 
-## ✨ 特性
+## 📖 简介
 
-- 🎣 **Cursor Hooks 集成** - 自动感知文件保存、Git 提交等编码事件
-- 🎤 **实时语音合成** - 使用 macOS TTS 生成自然流畅的中文语音
-- 🎭 **表情动画系统** - 根据情绪显示不同表情和动作
-- 🔌 **WebSocket 通信** - 实时接收编码事件并响应
-- 📊 **事件映射** - 自动将编码事件映射到情绪和对话
-- 🎨 **オルテンシア 主题** - 优雅的紫白配色
-- 🌐 **浏览器支持** - 可在 Chrome/Electron 中运行
+Ortensia 是一个用于程序化控制 Cursor IDE 的系统，通过注入 WebSocket 服务器到 Cursor 主进程，实现对 IDE 的完全自动化控制。
+
+### 核心功能
+
+- ✅ 自动输入提示词到 AI Composer
+- ✅ 自动提交并触发 AI Agent 执行
+- ✅ 检测 Agent 工作状态
+- ✅ 支持本地开发模式和中央服务器模式
+- ✅ WebSocket 协议通信
+- ✅ Python 客户端库
+
+---
 
 ## 🚀 快速开始
 
-### 前置要求
-
-- macOS (用于 `say` 命令)
-- [ffmpeg](https://ffmpeg.org/) - 音频格式转换
-- Python 3.8+
-- Node.js 18+
-
-### 安装
-
-1. **安装 ffmpeg**
-```bash
-brew install ffmpeg
-```
-
-2. **安装 Python 依赖**
-```bash
-cd bridge
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-3. **安装 Node 依赖**
-```bash
-cd aituber-kit
-npm install
-```
-
-### 运行
-
-#### 方法 1: 一键启动（推荐）
+### 1. 安装 V9 注入
 
 ```bash
-./START_ALL.sh
+cd cursor-injector
+./install-v9.sh
 ```
 
-这将自动启动：
-- WebSocket 服务器 (端口 8000)
-- Next.js 开发服务器 (端口 3000)
-- Electron 桌面应用
+### 2. 重启 Cursor
 
-#### 方法 2: 分别启动
+完全退出 Cursor (Cmd+Q) 并重新启动。
 
-**终端 1 - WebSocket 服务器:**
-```bash
-cd bridge
-source venv/bin/activate
-python websocket_server.py
-```
-
-**终端 2 - AITuber Kit:**
-```bash
-cd aituber-kit
-npm run dev
-```
-
-**终端 3 - Electron (可选):**
-```bash
-cd aituber-kit
-npm run assistant:dev
-```
-
-### 访问
-
-- 🌐 **Web 界面**: http://localhost:3000/assistant
-- 🖥️ **Electron 应用**: 自动弹出窗口
-
-### 停止服务
+### 3. 测试
 
 ```bash
-./STOP_ALL.sh
+python3 test_complete_flow.py
 ```
+
+**详细指南**: 查看 [QUICK_START_V9.md](QUICK_START_V9.md)
+
+---
 
 ## 📁 项目结构
 
 ```
 cursorgirl/
-├── aituber-kit/          # Next.js + Electron 前端
-│   ├── src/
-│   │   ├── components/   # React 组件
-│   │   ├── features/     # 核心功能
-│   │   ├── pages/        # 页面和 API 路由
-│   │   └── config/       # オルテンシア 主题配置
-│   └── public/
-│       └── vrm/          # VRM 3D 模型
+├── cursor-injector/          # 注入相关
+│   ├── install-v9.sh         # V9 注入脚本 ⭐
+│   ├── composer_operations.py # 底层操作库 ⭐
+│   ├── test_complete_flow.py # 完整测试
+│   ├── test_final_click.py   # 最终验证
+│   ├── auto_analyze_button.py # 按钮分析工具
+│   ├── dom_monitor.py        # DOM 监控
+│   └── ortensia_cursor_client.py # 客户端库
 │
-├── bridge/               # Python 后端
-│   ├── websocket_server.py    # WebSocket 服务器
-│   ├── websocket_client.py    # 客户端示例
-│   ├── emotion_mapper.py      # 事件→情绪映射
-│   ├── tts_manager.py         # TTS 管理器
-│   ├── tts/                   # TTS 实现
-│   │   ├── base.py           # TTS 基类
-│   │   ├── macos_tts.py      # macOS TTS
-│   │   └── placeholder_tts.py # 占位符
-│   ├── tts_config.json        # TTS 配置
-│   └── config/
-│       └── emotion_rules.yaml # 情绪映射规则
+├── bridge/                   # 中央服务器
+│   ├── websocket_server.py   # 中央 WebSocket Server
+│   └── protocol.py           # 协议定义
 │
-├── README.md             # 本文件
-├── TTS_SUCCESS.md        # TTS 集成成功报告
-├── WEBSOCKET_ARCHITECTURE.md  # WebSocket 架构文档
-├── START_ALL.sh          # 一键启动脚本
-└── STOP_ALL.sh           # 停止脚本
+├── docs/                     # 文档
+│   ├── V9_IMPLEMENTATION_SUMMARY.md    # V9 实施总结
+│   ├── IMPLEMENTATION_STATUS.md        # 实施状态
+│   ├── WEBSOCKET_PROTOCOL.md           # 协议规范
+│   └── ...
+│
+├── examples/                 # 示例
+│   └── command_client_example.py
+│
+├── archive/                  # 归档（早期探索）
+│
+├── QUICK_START_V9.md        # 快速开始
+├── V9_COMPLETION_REPORT.md  # 完成报告
+├── TODO.md                  # 待办事项
+└── README.md               # 本文件
 ```
-
-## 🎤 TTS 配置
-
-编辑 `bridge/tts_config.json` 来配置 TTS:
-
-```json
-{
-  "engine": "macos",
-  "macos": {
-    "voice": "Meijia",    // 音色: Meijia, Sinji, Tingting, Flo, Sandy
-    "rate": 220,          // 语速: 150-300
-    "output_dir": "tts_output"
-  }
-}
-```
-
-### 推荐音色（少女音）
-
-- **Meijia** (美佳) - 年轻女声，自然流畅 ⭐ 推荐
-- **Sinji** (欣基) - 轻快少女音 ⭐ 推荐
-- **Tingting** (婷婷) - 标准女声
-- **Flo** - 清脆女声
-- **Sandy** - 温柔女声
-
-查看所有可用音色:
-```bash
-say -v '?'
-```
-
-## 🔌 WebSocket API
-
-### 消息格式
-
-发送给 オルテンシア:
-
-```json
-{
-  "text": "你好！我是オルテンシア！",
-  "role": "assistant",
-  "emotion": "happy",
-  "type": "assistant"
-}
-```
-
-服务器会自动添加 `audio_file` 字段:
-
-```json
-{
-  "text": "你好！我是オルテンシア！",
-  "role": "assistant",
-  "emotion": "happy",
-  "type": "assistant",
-  "audio_file": "tts_output/xxxxx.wav"
-}
-```
-
-### 支持的情绪
-
-- `neutral` - 中性
-- `happy` - 开心
-- `sad` - 难过
-- `angry` - 生气
-- `relaxed` - 放松
-- `surprised` - 惊讶
-- `excited` - 兴奋
-
-## 🎣 Cursor Hooks (自动编码事件)
-
-オルテンシア已经集成了 Cursor Hooks，可以自动响应你的编码操作！
-
-### 工作原理
-
-```
-保存文件 (Cmd+S) → post-save hook → WebSocket → オルテンシア: "保存成功~" 😊
-Git commit       → post-commit hook → WebSocket → オルテンシア: "太棒了！代码提交成功~" 🎉
-```
-
-### 在本项目中使用
-
-Hooks 已经在本项目中启用！当你：
-- 保存文件 - オルテンシア 会说 "保存成功~"
-- Git commit - オルテンシア 会说 "太棒了！代码提交成功~"
-
-### 在其他项目中使用
-
-#### 方法 A: 使用部署脚本（推荐）
-
-```bash
-# 1. 部署 hooks 到你的项目
-cd /path/to/cursorgirl/cursor-hooks
-./deploy.sh /path/to/your/project
-
-# 2. 确保オルテンシア服务运行中
-cd /path/to/cursorgirl && ./START_ALL.sh
-
-# 3. 在 Cursor 中打开你的项目并编码
-# オルテンシア 会自动响应 ✨
-```
-
-#### 方法 B: 手动复制
-
-```bash
-# 1. 复制 .cursor 目录到你的项目
-cp -r /path/to/cursorgirl/cursor-hooks/.cursor /path/to/your/project/
-
-# 2. 确保 hooks 可执行
-chmod +x /path/to/your/project/.cursor/hooks/*
-
-# 3. 确保オルテンシア服务运行中
-cd /path/to/cursorgirl && ./START_ALL.sh
-
-# 4. 在 Cursor 中打开你的项目并编码
-# オルテンシア 会自动响应 ✨
-```
-
-#### 卸载 Hooks
-
-```bash
-cd /path/to/cursorgirl/cursor-hooks
-./undeploy.sh /path/to/your/project
-```
-
-### 支持的 Hooks
-
-**文件操作** (1个):
-- ✅ **post-save** - 文件保存后触发
-
-**Git 操作** (3个):
-- ✅ **pre-commit** - Git 提交前触发（验证、格式化）
-- ✅ **post-commit** - Git 提交后触发
-- ✅ **post-push** - Git 推送后触发
-
-**构建** (2个):
-- ✅ **on-build** - 构建开始时触发
-- ✅ **post-build** - 构建完成后触发（成功/失败）
-
-**测试** (2个):
-- ✅ **on-test** - 测试开始时触发
-- ✅ **post-test** - 测试完成后触发（通过/失败）
-
-**错误处理** (1个):
-- ✅ **on-error** - 错误发生时触发（语法/运行时/构建/测试错误）
-
-**总计**: ✅ 10 个 Hooks 已实现
-
-### 查看 Hook 日志
-
-```bash
-# 实时查看
-tail -f /tmp/cursor-hooks.log
-
-# 查看最近记录
-tail -20 /tmp/cursor-hooks.log
-```
-
-### 自定义配置
-
-编辑 `.cursor/hooks/config.sh`:
-
-```bash
-# WebSocket 服务器地址
-WS_SERVER="ws://localhost:8000/ws"
-
-# 是否启用调试模式
-DEBUG=true
-
-# 是否启用 WebSocket 发送
-ENABLE_WEBSOCKET=true
-```
-
-### 详细文档
-
-- [Cursor Hooks README](./cursor-hooks/README.md) - 完整说明
-- [完整 Hooks 指南](./docs/COMPLETE_HOOKS_GUIDE.md) - 所有 Hooks 详解
 
 ---
 
-## 🤖 Agent Hooks (Cursor AI Agent 事件)
+## 🔑 关键发现
 
-除了 IDE Event Hooks，オルテンシア 还支持 **Agent Hooks** - 当 Cursor AI Agent 执行操作时自动触发！
+### 正确的 DOM 选择器
 
-### 什么是 Agent Hooks？
+经过大量测试验证：
 
-Agent Hooks 允许你监控和控制 Cursor AI Agent 的行为：
-- 🔒 Agent 执行命令前进行安全检查
-- 📝 Agent 编辑文件后自动格式化
-- 🔐 Agent 读取敏感文件时请求确认
-- 🎉 Agent 完成任务时庆祝
+| 元素 | 选择器 | 说明 |
+|------|--------|------|
+| 输入框 | `.aislash-editor-input` | Lexical 编辑器 |
+| **提交按钮** | **`.send-with-mode > .anysphere-icon-button`** | ⚠️ 必须点击子元素！ |
+| 按钮图标 | `.codicon-arrow-up-two` | 上箭头 |
+| 状态指示器 | `[class*="loading" i]` | Loading 状态 |
+| Editor Tab | `.segmented-tab` | 标签切换 |
 
-### 支持的 Agent Hooks (9个)
+**重要**: `.send-with-mode` 父元素的 `cursor: auto`，不可点击。必须点击子元素 `.anysphere-icon-button` (cursor: pointer)。
 
-**命令执行** (2个):
-- ✅ **beforeShellExecution** - Agent 执行命令前（安全检查）
-- ✅ **afterShellExecution** - Agent 执行命令后（审计）
+### 操作流程
 
-**工具调用** (2个):
-- ✅ **beforeMCPExecution** - Agent 调用工具前（权限检查）
-- ✅ **afterMCPExecution** - Agent 调用工具后（审计）
-
-**文件操作** (2个):
-- ✅ **afterFileEdit** - Agent 编辑文件后（自动格式化）
-- ✅ **beforeReadFile** - Agent 读取文件前（敏感文件保护）
-
-**提示和响应** (2个):
-- ✅ **beforeSubmitPrompt** - Agent 提交提示前（敏感信息检测）
-- ✅ **afterAgentResponse** - Agent 响应后（审计）
-
-**任务控制** (1个):
-- ✅ **stop** - Agent 任务完成时（庆祝或继续）
-
-### Agent Hooks 特性
-
-✨ **所有事件都触发オルテンシア语音** - Agent 的每个操作都有实时语音反馈！
-
-🔐 **安全控制**:
-- 危险命令自动拦截（如 `rm -rf /`）
-- 风险命令需要用户确认
-- 敏感文件访问控制
-
-📊 **详细日志** - 每个 Hook 的执行都有完整日志记录
-
-### 部署 Agent Hooks
-
-Agent Hooks 是全局的，一次部署，所有项目都生效：
-
-```bash
-cd /path/to/cursorgirl/.cursor-agent
-./deploy_agent_hooks.sh
-```
-
-### 查看 Agent Hook 日志
-
-```bash
-# 使用日志查看工具（推荐）
-cd ~/.cursor-agent && ./view_logs.sh
-
-# 或直接查看
-tail -f /tmp/cursor-agent-hooks.log
-```
-
-### Agent Hooks 工作流程
-
-```
-Cursor Agent 执行命令
-    ↓
-beforeShellExecution → 检查安全性 → オルテンシア: "执行命令：ls -la" 🎤
-    ↓
-命令执行
-    ↓
-afterShellExecution → 检查结果 → オルテンシア: "命令完成：ls -la" 🎉
-```
-
-### 更多文档
-
-- [Agent Hooks README](./.cursor-agent/README.md) - 日志系统说明
-- [Agent Hooks 修复报告](./docs/AGENT_HOOKS_FIXED.md) - 技术细节
-- [完整 Hooks 指南](./docs/COMPLETE_HOOKS_GUIDE.md) - 所有 Hooks 详解
+1. 确保在 **Editor tab**（不是 Agents）
+2. 如果 Composer 不可见，用 **Cmd+I** 唤出
+3. 输入文字使用 `document.execCommand('insertText')`
+4. **等待 1-1.5 秒**让上箭头按钮出现
+5. 点击 `.send-with-mode > .anysphere-icon-button` 子元素
+6. 检测 `[class*="loading" i]` 判断是否开始工作
 
 ---
 
-## 📝 测试
+## 🧪 测试工具
 
-### 发送测试消息
+### 基础测试
 
 ```bash
-cd bridge
-python websocket_client.py
+# 完整流程测试
+python3 test_complete_flow.py
+
+# 最终点击验证
+python3 test_final_click.py
+
+# 自定义选择器测试
+python3 test_custom_selector.py ".your-selector"
 ```
 
-或使用 Python 代码:
+### 分析工具
 
+```bash
+# 自动分析按钮结构
+python3 auto_analyze_button.py
+
+# 实时 DOM 监控
+python3 dom_monitor.py
+```
+
+---
+
+## 🔧 两种模式
+
+### 模式 1: 本地开发模式
+
+**特点**: 
+- 无需中央服务器
+- 直接连接到 Cursor (端口 9876)
+- 适合开发和调试
+
+**使用**:
 ```python
-import asyncio
-from websocket_client import WebSocketClient
+from composer_operations import ComposerOperator
 
 async def test():
-    client = WebSocketClient()
-    await client.connect()
-    await client.send_emotion('你好！我是オルテンシア！', 'happy')
-    await asyncio.sleep(5)
-    await client.close()
-
-asyncio.run(test())
+    operator = ComposerOperator()
+    await operator.connect()
+    
+    result = await operator.execute_prompt(
+        "你的提示词",
+        wait_for_completion=True
+    )
+    print(result)
 ```
 
-## 🛠️ 故障排查
+### 模式 2: 中央服务器模式
 
-### WebSocket 连接失败
+**特点**:
+- 支持多个 Cursor 实例
+- 支持远程控制
+- 消息路由和广播
 
-1. 检查服务器是否运行: `lsof -ti :8000`
-2. 查看服务器日志: `tail -f /tmp/websocket_server.log`
-3. 重启服务: `./STOP_ALL.sh && ./START_ALL.sh`
+**使用**:
+```bash
+# 1. 启动中央服务器
+cd bridge
+python3 websocket_server.py
 
-### 音频无法播放
+# 2. 设置环境变量
+export ORTENSIA_SERVER=ws://localhost:8765
 
-1. 确认 ffmpeg 已安装: `which ffmpeg`
-2. 检查音频文件: `ls bridge/tts_output/`
-3. 查看浏览器控制台错误
+# 3. 重启 Cursor
+```
 
-### TTS 生成失败
+详细协议见 [docs/WEBSOCKET_PROTOCOL.md](docs/WEBSOCKET_PROTOCOL.md)
 
-1. 测试 say 命令: `say -v Meijia "测试" -o /tmp/test.aiff`
-2. 测试 ffmpeg: `ffmpeg -i /tmp/test.aiff /tmp/test.wav`
-3. 检查 TTS 配置: `cat bridge/tts_config.json`
+---
 
 ## 📚 文档
 
-- [TTS 成功报告](./TTS_SUCCESS.md) - 完整的 TTS 集成过程和结果
-- [WebSocket 架构](./WEBSOCKET_ARCHITECTURE.md) - WebSocket 通信架构详解
-- [AITuber Kit 文档](./aituber-kit/README.md) - 原始项目文档
-
-## 🎯 技术栈
-
-### 前端
-- Next.js 14
-- React 18
-- TypeScript
-- Tailwind CSS
-- Three.js (VRM 渲染)
-- Electron (桌面应用)
-
-### 后端
-- Python 3.13
-- websockets
-- PyYAML
-- ffmpeg (音频转换)
-
-### TTS
-- macOS System TTS (`say` 命令)
-- ffmpeg (AIFF → WAV 转换)
-
-## 🌟 特别感谢
-
-- [AITuber Kit](https://github.com/tegnike/aituber-kit) - 原始项目
-- [pixiv/three-vrm](https://github.com/pixiv/three-vrm) - VRM 模型渲染
-- オルテンシア 模型创作者
-
-## 📄 许可证
-
-本项目基于 AITuber Kit 开发，遵循其原始许可证。
-
-## 💬 联系
-
-如有问题或建议，请创建 Issue。
+| 文档 | 说明 |
+|------|------|
+| [QUICK_START_V9.md](QUICK_START_V9.md) | 5分钟快速开始 |
+| [V9_COMPLETION_REPORT.md](V9_COMPLETION_REPORT.md) | 完成报告 |
+| [docs/V9_IMPLEMENTATION_SUMMARY.md](docs/V9_IMPLEMENTATION_SUMMARY.md) | 实施总结 |
+| [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | 当前状态 |
+| [docs/WEBSOCKET_PROTOCOL.md](docs/WEBSOCKET_PROTOCOL.md) | 协议规范 |
+| [TODO.md](TODO.md) | 待办事项 |
 
 ---
 
-**状态**: ✅ 正常工作  
-**最后更新**: 2025-11-01  
-**版本**: 1.0.0
+## ⚠️ 注意事项
 
-🎉 **オルテンシア 现在可以说话了！**
+1. **安全性**: 注入会修改 Cursor 应用，仅用于开发测试
+2. **签名**: 安装后需要重新签名应用
+3. **备份**: 系统会自动备份原始 `main.js`
+4. **恢复**: 如需恢复，使用备份文件：
+   ```bash
+   cp /Applications/Cursor.app/Contents/Resources/app/out/main.js.ortensia.backup \
+      /Applications/Cursor.app/Contents/Resources/app/out/main.js
+   ```
+
+---
+
+## 🔧 故障排查
+
+### Cursor 无法启动
+
+重新签名：
+```bash
+codesign --force --deep --sign - /Applications/Cursor.app
+```
+
+### WebSocket 连接失败
+
+检查日志：
+```bash
+cat /tmp/cursor_ortensia.log
+```
+
+### 按钮点击无效
+
+1. 确保使用正确选择器：`.send-with-mode > .anysphere-icon-button`
+2. 输入后等待 1-1.5 秒
+3. 确保在 Editor tab
+
+更多问题见 [QUICK_START_V9.md](QUICK_START_V9.md) 的故障排查部分。
+
+---
+
+## 🎯 测试结果
+
+**V9 本地模式测试**: ✅ 成功
+
+- ✅ 自动切换到 Editor tab
+- ✅ 自动检测 Composer 就绪
+- ✅ 成功输入文字
+- ✅ 成功点击子元素提交
+- ✅ Agent 成功启动
+- ✅ 检测到 6 个 loading 指示器
+
+---
+
+## 📊 版本历史
+
+### V9 (2025-11-04) - Current ✅
+
+- ✅ 修复提交按钮选择器（使用子元素）
+- ✅ 增加等待时间（1.5 秒）
+- ✅ 完善错误处理
+- ✅ 详细的调试日志
+- **核心功能验证通过**
+
+### V8 (2025-11-04)
+
+- 添加中央 Server 连接
+- 实现消息路由
+- 支持多客户端
+
+### V7 及更早
+
+- 基础注入实现
+- DOM 访问探索
+- 协议设计
+
+---
+
+## 🚧 下一步计划
+
+见 [TODO.md](TODO.md)
+
+- [ ] 测试中央 Server 模式
+- [ ] 端到端系统验证
+- [ ] 性能优化
+- [ ] 更多语义操作
+
+---
+
+## 📝 许可
+
+MIT License
+
+---
+
+## 👥 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+*最后更新: 2025-11-04*  
+*版本: V9*  
+*状态: ✅ 核心功能完成*
