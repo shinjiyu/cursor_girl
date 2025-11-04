@@ -306,11 +306,12 @@ cat > "$MAIN_JS" << 'INJECT_END'
         
         // 等待并点击提交按钮（上箭头）
         async function submitByButton(window) {
-            // 等待按钮出现（最多 5 秒）
-            for (let i = 0; i < 25; i++) {
+            // 等待按钮出现（最多 10 秒）
+            for (let i = 0; i < 50; i++) {
                 const code = `
                     (function() {
-                        const button = document.querySelector('.send-with-mode');
+                        // ✅ 必须查找子元素 .anysphere-icon-button
+                        const button = document.querySelector('.send-with-mode > .anysphere-icon-button');
                         if (!button) return JSON.stringify({ ready: false });
                         
                         const isVisible = button.offsetParent !== null;
@@ -325,7 +326,8 @@ cat > "$MAIN_JS" << 'INJECT_END'
                     // 按钮已就绪，点击它
                     const clickCode = `
                         (function() {
-                            const button = document.querySelector('.send-with-mode');
+                            // ✅ 点击子元素，不是父元素
+                            const button = document.querySelector('.send-with-mode > .anysphere-icon-button');
                             if (!button) return JSON.stringify({ success: false, error: '按钮未找到' });
                             
                             button.click();
@@ -341,7 +343,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 await new Promise(resolve => setTimeout(resolve, 200));
             }
             
-            return { success: false, error: '提交按钮未在 5 秒内出现' };
+            return { success: false, error: '提交按钮未在 10 秒内出现' };
         }
         
         // ====================================================================

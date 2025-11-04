@@ -25,8 +25,9 @@ class ComposerOperator:
         # DOM 选择器配置（基于实际验证）
         self.selectors = {
             'input': '.aislash-editor-input',
-            'submit_button': '.send-with-mode',  # ✅ 实际验证：DIV 元素，不是 button
-            'submit_icon': '.codicon-arrow-up-two',  # 备选：SPAN 图标
+            'submit_button': '.send-with-mode > .anysphere-icon-button',  # ✅ 必须点击子元素！
+            'submit_button_parent': '.send-with-mode',  # 父元素（用于查找）
+            'submit_icon': '.codicon-arrow-up-two',  # SPAN 图标
             'editor_tab': '.segmented-tab',  # Editor tab 切换
             'thinking_indicators': [
                 '[class*="loading" i]',  # ✅ 实际验证有效
