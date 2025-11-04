@@ -70,11 +70,17 @@ class MessageType(str, Enum):
     HEARTBEAT_ACK = "heartbeat_ack"
     DISCONNECT = "disconnect"
     
-    # Composer 操作
+    # Composer 操作（底层）
     COMPOSER_SEND_PROMPT = "composer_send_prompt"
     COMPOSER_SEND_PROMPT_RESULT = "composer_send_prompt_result"
     COMPOSER_QUERY_STATUS = "composer_query_status"
     COMPOSER_STATUS_RESULT = "composer_status_result"
+    
+    # Agent 操作（高层次语义）
+    AGENT_EXECUTE_PROMPT = "agent_execute_prompt"
+    AGENT_EXECUTE_PROMPT_RESULT = "agent_execute_prompt_result"
+    AGENT_STOP_EXECUTION = "agent_stop_execution"
+    AGENT_STOP_EXECUTION_RESULT = "agent_stop_execution_result"
     
     # 事件通知
     AGENT_STATUS_CHANGED = "agent_status_changed"
@@ -138,6 +144,56 @@ class ComposerStatusResultPayload:
     success: bool
     agent_id: str
     status: Optional[AgentStatus] = None
+    error: Optional[str] = None
+
+
+# ============================================================================
+# 高层次语义操作 Payload（Agent 操作）
+# ============================================================================
+
+@dataclass
+class AgentExecutePromptPayload:
+    """执行提示词的 Payload（高层次语义操作）
+    
+    这是一个完整的语义操作，包括：
+    1. 输入提示词
+    2. 提交执行
+    3. 可选：等待完成
+    """
+    agent_id: str
+    prompt: str
+    wait_for_completion: bool = False  # 是否等待执行完成
+    timeout: int = 300000              # 超时时间（ms），默认 5 分钟
+    clear_first: bool = True           # 是否先清空输入框
+
+
+@dataclass
+class AgentExecutePromptResultPayload:
+    """执行提示词结果的 Payload"""
+    success: bool
+    agent_id: str
+    phase: str                          # 执行到哪个阶段: input, submit, executing, completed
+    message: Optional[str] = None
+    error: Optional[str] = None
+    input_completed: bool = False       # 输入是否完成
+    submit_completed: bool = False      # 提交是否完成
+    execution_time: Optional[int] = None  # 执行时间（ms）
+    status: Optional[AgentStatus] = None  # 最终状态
+
+
+@dataclass
+class AgentStopExecutionPayload:
+    """停止 Agent 执行的 Payload"""
+    agent_id: str
+    reason: Optional[str] = None        # 停止原因
+
+
+@dataclass
+class AgentStopExecutionResultPayload:
+    """停止执行结果的 Payload"""
+    success: bool
+    agent_id: str
+    message: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -498,6 +554,122 @@ class MessageBuilder:
             to="server",
             timestamp=int(time.time()),
             payload=payload_dict
+        )
+    
+    # ========================================================================
+    # 高层次语义操作消息
+    # ========================================================================
+    
+    @staticmethod
+    def agent_execute_prompt(
+        from_id: str,
+        to_id: str,
+        agent_id: str,
+        prompt: str,
+        wait_for_completion: bool = False,
+        timeout: int = 300000,
+        clear_first: bool = True
+    ) -> Message:
+        """创建 Agent 执行提示词消息（高层次语义操作）"""
+        payload = AgentExecutePromptPayload(
+            agent_id=agent_id,
+            prompt=prompt,
+            wait_for_completion=wait_for_completion,
+            timeout=timeout,
+            clear_first=clear_first
+        )
+        
+        return Message(
+            type=MessageType.AGENT_EXECUTE_PROMPT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    @staticmethod
+    def agent_execute_prompt_result(
+        from_id: str,
+        to_id: str,
+        agent_id: str,
+        success: bool,
+        phase: str,
+        message: Optional[str] = None,
+        error: Optional[str] = None,
+        input_completed: bool = False,
+        submit_completed: bool = False,
+        execution_time: Optional[int] = None,
+        status: Optional[AgentStatus] = None
+    ) -> Message:
+        """创建 Agent 执行提示词结果消息"""
+        payload = AgentExecutePromptResultPayload(
+            success=success,
+            agent_id=agent_id,
+            phase=phase,
+            message=message,
+            error=error,
+            input_completed=input_completed,
+            submit_completed=submit_completed,
+            execution_time=execution_time,
+            status=status
+        )
+        
+        payload_dict = asdict(payload)
+        if status:
+            payload_dict['status'] = status.value
+        
+        return Message(
+            type=MessageType.AGENT_EXECUTE_PROMPT_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=payload_dict
+        )
+    
+    @staticmethod
+    def agent_stop_execution(
+        from_id: str,
+        to_id: str,
+        agent_id: str,
+        reason: Optional[str] = None
+    ) -> Message:
+        """创建停止 Agent 执行消息"""
+        payload = AgentStopExecutionPayload(
+            agent_id=agent_id,
+            reason=reason
+        )
+        
+        return Message(
+            type=MessageType.AGENT_STOP_EXECUTION,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    @staticmethod
+    def agent_stop_execution_result(
+        from_id: str,
+        to_id: str,
+        agent_id: str,
+        success: bool,
+        message: Optional[str] = None,
+        error: Optional[str] = None
+    ) -> Message:
+        """创建停止执行结果消息"""
+        payload = AgentStopExecutionResultPayload(
+            success=success,
+            agent_id=agent_id,
+            message=message,
+            error=error
+        )
+        
+        return Message(
+            type=MessageType.AGENT_STOP_EXECUTION_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
         )
 
 
