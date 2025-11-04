@@ -261,19 +261,30 @@ class ComposerOperator:
         result = await self.eval_in_renderer(code)
         return result
     
-    async def wait_for_submit_button(self, timeout=5):
+    async def wait_for_submit_button(self, timeout=10):
         """等待提交按钮出现（输入后才会出现）"""
         start_time = time.time()
+        attempts = 0
+        
+        print(f'  ⏱️  等待按钮出现（最多 {timeout} 秒）...')
         
         while time.time() - start_time < timeout:
+            attempts += 1
             result = await self.find_submit_button()
+            
             if result['success'] and result.get('visible'):
+                elapsed = time.time() - start_time
+                print(f'  ✅ 按钮已出现（耗时 {elapsed:.1f} 秒，尝试 {attempts} 次）')
                 return result
+            
+            if attempts % 5 == 0:  # 每 1 秒打印一次
+                print(f'  ⏳ 等待中... ({attempts * 0.2:.1f}s)')
+            
             await asyncio.sleep(0.2)
         
         return {
             'success': False,
-            'error': f'提交按钮未在 {timeout} 秒内出现'
+            'error': f'提交按钮未在 {timeout} 秒内出现（尝试了 {attempts} 次）'
         }
     
     # ========== 2. 发送提示词 ==========
@@ -511,12 +522,18 @@ class ComposerOperator:
             # 检查是否正在工作
             status = await self.is_agent_working()
             
+            # 检查返回结果是否有效
+            if not isinstance(status, dict) or 'isWorking' not in status:
+                print(f'⚠️  状态检测返回异常: {status}')
+                await asyncio.sleep(poll_interval)
+                continue
+            
             if not status['isWorking']:
                 # 不在工作了，再确认一次
                 await asyncio.sleep(1)
                 confirm = await self.is_agent_working()
                 
-                if not confirm['isWorking']:
+                if isinstance(confirm, dict) and 'isWorking' in confirm and not confirm['isWorking']:
                     elapsed = time.time() - start_time
                     print(f'✅ Agent 已完成（耗时 {elapsed:.1f} 秒）')
                     return {
@@ -527,11 +544,11 @@ class ComposerOperator:
             
             # 检查是否有错误
             error_check = await self.check_error()
-            if error_check['hasError']:
+            if isinstance(error_check, dict) and error_check.get('hasError'):
                 return {
                     'success': False,
                     'error': 'Agent 执行出错',
-                    'details': error_check['error']
+                    'details': error_check.get('error')
                 }
             
             # 等待后重试
@@ -576,8 +593,9 @@ class ComposerOperator:
         print(f'✅ 文字输入成功（{input_text_result["length"]} 字符）')
         print()
         
-        # 等待一下让 UI 更新
-        await asyncio.sleep(0.5)
+        # 等待 UI 更新（输入后上箭头按钮才会出现）
+        print('  ⏳ 等待上箭头按钮出现...')
+        await asyncio.sleep(1)  # 增加到 1 秒
         
         # 步骤 2: 点击上箭头按钮提交
         print('步骤 2: 点击上箭头按钮提交...')
