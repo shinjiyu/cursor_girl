@@ -22,16 +22,18 @@ class ComposerOperator:
         self.ws_url = ws_url
         self.ws = None
         
-        # DOM 选择器配置
+        # DOM 选择器配置（基于实际验证）
         self.selectors = {
             'input': '.aislash-editor-input',
-            'submit_button': 'button[type="submit"]',
+            'submit_button': '.send-with-mode',  # ✅ 实际验证：DIV 元素，不是 button
+            'submit_icon': '.codicon-arrow-up-two',  # 备选：SPAN 图标
+            'editor_tab': '.segmented-tab',  # Editor tab 切换
             'thinking_indicators': [
+                '[class*="loading" i]',  # ✅ 实际验证有效
                 '.cursor-thinking',
                 '.agent-working',
                 '.thinking-indicator',
                 '[data-status="thinking"]',
-                '.loading',
                 '.spinner'
             ],
             'stop_button': [
@@ -75,6 +77,134 @@ class ComposerOperator:
         else:
             return {'error': response.get('error')}
     
+    # ========== 0. 确保 UI 就绪 ==========
+    
+    async def ensure_editor_tab(self):
+        """确保在 Editor tab（不是 Agents tab）"""
+        code = f'''
+        (function() {{
+            // 查找所有标签
+            const tabs = document.querySelectorAll('{self.selectors["editor_tab"]}');
+            
+            if (tabs.length === 0) {{
+                return JSON.stringify({{
+                    success: false,
+                    error: '未找到标签'
+                }});
+            }}
+            
+            // 查找 Editor 标签（通过文本识别）
+            let editorTab = null;
+            for (const tab of tabs) {{
+                const text = (tab.innerText || tab.textContent || '').toLowerCase();
+                if (text.includes('editor')) {{
+                    editorTab = tab;
+                    break;
+                }}
+            }}
+            
+            if (!editorTab) {{
+                return JSON.stringify({{
+                    success: false,
+                    error: '未找到 Editor 标签'
+                }});
+            }}
+            
+            // 检查是否已经激活
+            const isActive = editorTab.classList.contains('active') || 
+                           editorTab.getAttribute('aria-selected') === 'true';
+            
+            if (!isActive) {{
+                // 点击切换到 Editor
+                editorTab.click();
+                return JSON.stringify({{
+                    success: true,
+                    switched: true,
+                    message: '已切换到 Editor tab'
+                }});
+            }}
+            
+            return JSON.stringify({{
+                success: true,
+                switched: false,
+                message: '已经在 Editor tab'
+            }});
+        }})()
+        '''
+        
+        result = await self.eval_in_renderer(code)
+        return result
+    
+    async def invoke_composer(self):
+        """使用 Cmd+I 唤出 Composer"""
+        code = '''
+        (function() {
+            // 模拟 Cmd+I（Mac）或 Ctrl+I（Windows）
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            
+            const event = new KeyboardEvent('keydown', {
+                key: 'i',
+                code: 'KeyI',
+                keyCode: 73,
+                which: 73,
+                metaKey: isMac,      // Mac 使用 Cmd
+                ctrlKey: !isMac,     // Windows 使用 Ctrl
+                bubbles: true,
+                cancelable: true
+            });
+            
+            document.dispatchEvent(event);
+            
+            return JSON.stringify({
+                success: true,
+                message: 'Cmd+I 已发送'
+            });
+        })()
+        '''
+        
+        result = await self.eval_in_renderer(code)
+        return result
+    
+    async def ensure_composer_ready(self):
+        """确保 Composer 已就绪（在 Editor tab 且可见）"""
+        print('  📍 确保 Composer 就绪...')
+        
+        # 1. 确保在 Editor tab
+        tab_result = await self.ensure_editor_tab()
+        if not tab_result['success']:
+            return tab_result
+        
+        if tab_result.get('switched'):
+            print('  ✅ 已切换到 Editor tab')
+            await asyncio.sleep(0.5)  # 等待 UI 更新
+        else:
+            print('  ✅ 已在 Editor tab')
+        
+        # 2. 检查输入框是否存在
+        input_result = await self.find_input()
+        
+        if not input_result['success']:
+            # 输入框不存在，尝试用 Cmd+I 唤出
+            print('  📢 输入框不可见，尝试 Cmd+I 唤出...')
+            
+            invoke_result = await self.invoke_composer()
+            if not invoke_result['success']:
+                return invoke_result
+            
+            print('  ✅ Cmd+I 已发送')
+            await asyncio.sleep(1)  # 等待 Composer 出现
+            
+            # 再次检查
+            input_result = await self.find_input()
+            if not input_result['success']:
+                return {
+                    'success': False,
+                    'error': 'Cmd+I 后输入框仍未出现'
+                }
+        
+        print('  ✅ Composer 已就绪')
+        return {'success': True}
+    
     # ========== 1. 找到 DOM 对象 ==========
     
     async def find_input(self):
@@ -104,7 +234,7 @@ class ComposerOperator:
         return result
     
     async def find_submit_button(self):
-        """找到提交按钮"""
+        """找到提交按钮（上箭头按钮）"""
         code = f'''
         (function() {{
             const button = document.querySelector('{self.selectors["submit_button"]}');
@@ -115,17 +245,36 @@ class ComposerOperator:
                 }});
             }}
             
+            // 检查可见性
+            const isVisible = button.offsetParent !== null;
+            
             return JSON.stringify({{
                 success: true,
                 exists: true,
-                disabled: button.disabled,
-                text: button.innerText || button.textContent || ''
+                visible: isVisible,
+                className: button.className,
+                tagName: button.tagName
             }});
         }})()
         '''
         
         result = await self.eval_in_renderer(code)
         return result
+    
+    async def wait_for_submit_button(self, timeout=5):
+        """等待提交按钮出现（输入后才会出现）"""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            result = await self.find_submit_button()
+            if result['success'] and result.get('visible'):
+                return result
+            await asyncio.sleep(0.2)
+        
+        return {
+            'success': False,
+            'error': f'提交按钮未在 {timeout} 秒内出现'
+        }
     
     # ========== 2. 发送提示词 ==========
     
@@ -222,8 +371,14 @@ class ComposerOperator:
         result = await self.eval_in_renderer(code)
         return result
     
-    async def submit_by_button(self):
-        """通过点击按钮提交"""
+    async def submit_by_button(self, wait_for_button=True):
+        """通过点击上箭头按钮提交"""
+        # 如果需要，等待按钮出现
+        if wait_for_button:
+            wait_result = await self.wait_for_submit_button(timeout=5)
+            if not wait_result['success']:
+                return wait_result
+        
         code = f'''
         (function() {{
             const button = document.querySelector('{self.selectors["submit_button"]}');
@@ -234,18 +389,20 @@ class ComposerOperator:
                 }});
             }}
             
-            if (button.disabled) {{
+            // 检查可见性
+            if (button.offsetParent === null) {{
                 return JSON.stringify({{
                     success: false,
-                    error: '提交按钮被禁用'
+                    error: '提交按钮不可见'
                 }});
             }}
             
+            // 点击按钮
             button.click();
             
             return JSON.stringify({{
                 success: true,
-                message: '已点击提交按钮'
+                message: '已点击上箭头按钮'
             }});
         }})()
         '''
@@ -398,19 +555,18 @@ class ComposerOperator:
         print(f'等待完成: {wait_for_completion}')
         print()
         
-        # 步骤 1: 查找输入框
-        print('步骤 1: 查找输入框...')
-        input_result = await self.find_input()
+        # 步骤 0: 确保 Composer 就绪
+        print('步骤 0: 确保 Composer 就绪...')
+        ready_result = await self.ensure_composer_ready()
         
-        if not input_result['success']:
-            print(f'❌ {input_result["error"]}')
-            return input_result
+        if not ready_result['success']:
+            print(f'❌ {ready_result["error"]}')
+            return ready_result
         
-        print('✅ 输入框已找到')
         print()
         
-        # 步骤 2: 输入文字
-        print('步骤 2: 输入文字...')
+        # 步骤 1: 输入文字
+        print('步骤 1: 输入文字...')
         input_text_result = await self.input_text(prompt, clear_first=True)
         
         if not input_text_result['success']:
@@ -423,19 +579,13 @@ class ComposerOperator:
         # 等待一下让 UI 更新
         await asyncio.sleep(0.5)
         
-        # 步骤 3: 提交
-        print('步骤 3: 提交（Enter 键）...')
-        submit_result = await self.submit_by_enter()
+        # 步骤 2: 点击上箭头按钮提交
+        print('步骤 2: 点击上箭头按钮提交...')
+        submit_result = await self.submit_by_button(wait_for_button=True)
         
         if not submit_result['success']:
-            print(f'⚠️  Enter 键提交失败: {submit_result["error"]}')
-            print('   尝试点击按钮...')
-            
-            submit_result = await self.submit_by_button()
-            
-            if not submit_result['success']:
-                print(f'❌ 按钮提交也失败: {submit_result["error"]}')
-                return submit_result
+            print(f'❌ 提交失败: {submit_result["error"]}')
+            return submit_result
         
         print(f'✅ 已提交')
         print()

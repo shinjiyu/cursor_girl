@@ -177,6 +177,19 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         elif msg_type == MessageType.COMPOSER_STATUS_RESULT:
             await route_message(message)
         
+        # 语义操作（V9 新增）
+        elif msg_type == MessageType.AGENT_EXECUTE_PROMPT:
+            await handle_agent_execute_prompt(client_info, message)
+        
+        elif msg_type == MessageType.AGENT_EXECUTE_PROMPT_RESULT:
+            await route_message(message)
+        
+        elif msg_type == MessageType.AGENT_STOP_EXECUTION:
+            await handle_agent_stop_execution(client_info, message)
+        
+        elif msg_type == MessageType.AGENT_STOP_EXECUTION_RESULT:
+            await route_message(message)
+        
         elif msg_type in [MessageType.AGENT_STATUS_CHANGED, MessageType.AGENT_COMPLETED, MessageType.AGENT_ERROR]:
             await broadcast_event(message)
         
@@ -258,6 +271,18 @@ async def handle_composer_send_prompt(client_info: ClientInfo, message: Message)
 async def handle_composer_query_status(client_info: ClientInfo, message: Message):
     """处理 Composer 查询状态命令"""
     # 路由到目标 Cursor Hook
+    await route_message(message)
+
+
+async def handle_agent_execute_prompt(client_info: ClientInfo, message: Message):
+    """处理 Agent 执行提示词命令（语义操作）"""
+    # V9 新增：语义操作，直接路由到目标 Cursor Hook
+    await route_message(message)
+
+
+async def handle_agent_stop_execution(client_info: ClientInfo, message: Message):
+    """处理 Agent 停止执行命令（语义操作）"""
+    # V9 新增：语义操作，直接路由到目标 Cursor Hook
     await route_message(message)
 
 
