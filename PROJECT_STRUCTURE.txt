@@ -1,0 +1,68 @@
+Ortensia V9 - 项目结构
+=====================
+
+cursorgirl/
+│
+├── 📄 核心文档（4个）
+│   ├── README.md              ⭐ 项目主页
+│   ├── QUICK_START.md         ⭐ 快速入门
+│   ├── TODO.md                任务列表
+│   └── DOCS_INDEX.md          文档索引
+│
+├── 📁 bridge/                 中央服务器
+│   ├── websocket_server.py    ⭐ 启动这个
+│   ├── protocol.py            协议实现
+│   ├── requirements.txt       依赖列表
+│   └── ...
+│
+├── 📁 cursor-injector/        Cursor Hook
+│   ├── install-v9.sh          ⭐ V9 注入脚本
+│   ├── composer_operations.py DOM 操作
+│   ├── uninstall.sh           卸载脚本
+│   └── ...
+│
+├── 📁 scripts/                工具脚本
+│   ├── START_ALL.sh           ⭐ 一键启动
+│   ├── STOP_ALL.sh            停止服务
+│   ├── setup_central_mode.sh
+│   └── ...
+│
+├── 📁 tests/                  测试脚本
+│   └── quick_test_central.py  ⭐ 快速测试
+│
+├── 📁 docs/                   技术文档（16个）
+│   ├── PROJECT_STATUS.md      项目状态
+│   ├── SCRIPTS_INDEX.md       脚本索引
+│   ├── WEBSOCKET_PROTOCOL.md  协议规范
+│   ├── WEBSOCKET_ARCHITECTURE.md
+│   ├── BOTTOM_UP_IMPLEMENTATION.md
+│   └── ...
+│
+├── 📁 reports/                测试报告（4个）
+│   ├── CENTRAL_SERVER_SUCCESS_REPORT.md
+│   ├── V9_COMPLETION_REPORT.md
+│   └── ...
+│
+├── 📁 archive/                归档文档（20+个）
+│   ├── 早期分析文档
+│   ├── 实验记录
+│   └── 项目快照
+│
+└── 📁 examples/               示例代码
+    ├── command_client_example.py
+    └── semantic_command_client.py
+
+快速命令
+========
+
+启动: ./scripts/START_ALL.sh
+测试: cd tests && python3 quick_test_central.py
+停止: ./scripts/STOP_ALL.sh
+
+查看文档
+========
+
+完整索引: cat DOCS_INDEX.md
+快速入门: cat QUICK_START.md
+项目状态: cat docs/PROJECT_STATUS.md
+

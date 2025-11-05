@@ -206,6 +206,7 @@ async def handle_register(client_info: ClientInfo, message: Message):
     """处理注册消息"""
     payload = message.payload
     client_id = message.from_
+    old_id = client_info.client_id  # ✅ 保存旧 ID
     
     # 更新客户端信息
     client_info.client_id = client_id
@@ -213,20 +214,12 @@ async def handle_register(client_info: ClientInfo, message: Message):
     client_info.metadata = payload
     client_info.update_heartbeat()
     
-    # 重新注册（可能 ID 变了）
-    if message.from_ != client_info.client_id:
-        # 更新注册表
-        old_id = None
-        for ws, cid in list(registry.ws_to_id.items()):
-            if ws == client_info.websocket:
-                old_id = cid
-                break
-        
-        if old_id and old_id in registry.clients:
-            del registry.clients[old_id]
-        
-        registry.clients[client_id] = client_info
-        registry.ws_to_id[client_info.websocket] = client_id
+    # 更新注册表（ID 可能变了）
+    if old_id and old_id in registry.clients:
+        del registry.clients[old_id]
+    
+    registry.clients[client_id] = client_info
+    registry.ws_to_id[client_info.websocket] = client_id
     
     logger.info(f"✅ [{client_id}] 注册成功: {client_info.client_type}")
     
@@ -395,7 +388,7 @@ async def handle_legacy_message(websocket, data: dict):
 # 客户端连接处理
 # ============================================================================
 
-async def handle_client(websocket, path):
+async def handle_client(websocket):
     """处理客户端连接"""
     client_addr = websocket.remote_address
     logger.info(f"✅ 新连接: {client_addr}")

@@ -1,219 +1,270 @@
-# Ortensia WebSocket 协议 - 快速开始
+# 🚀 Ortensia 快速入门
 
-**版本**: 1.0  
-**最后更新**: 2025-11-03
+**版本**: V9  
+**5 分钟快速上手**
 
 ---
 
-## 🚀 3 分钟快速开始
+## 📋 前置要求
 
-### 方式 1: 本地开发模式（最简单）
+- Python 3.13+
+- Cursor IDE
+- macOS (主要测试平台)
 
-适合：快速测试、开发调试
+---
+
+## 🎯 三步启动
+
+### 1️⃣ 安装 Cursor Hook
 
 ```bash
-# 1. 安装 Cursor Hook V8
-cd "/Users/user/Documents/ cursorgirl/cursor-injector"
-./install-v8.sh
-
-# 2. 重启 Cursor（Cmd+Q 完全退出，然后重新打开）
-
-# 3. 测试输入
-python3 test-input-complete.py "Hello Ortensia! 🌸"
+cd cursor-injector
+./install-v9.sh
 ```
 
-**预期结果**: Cursor AI 聊天输入框显示 "Hello Ortensia! 🌸"
+这会将 WebSocket 客户端注入到 Cursor 中。
 
----
+### 2️⃣ 启动中央服务器
 
-### 方式 2: 完整系统模式
-
-适合：生产环境、多客户端协同
-
-#### 步骤 1: 启动中央 Server
-
-**终端 1**:
 ```bash
-cd "/Users/user/Documents/ cursorgirl/bridge"
+# 方法 1: 一键启动（推荐）
+./scripts/START_ALL.sh
+
+# 方法 2: 手动启动
+cd bridge
 python3 websocket_server.py
 ```
 
-#### 步骤 2: 测试 Server
+服务器会监听端口 8765。
 
-**终端 2**:
+### 3️⃣ 启动 Cursor 并测试
+
+启动 Cursor IDE，然后运行测试：
+
 ```bash
-cd "/Users/user/Documents/ cursorgirl/bridge"
-python3 test_server.py
+cd tests
+python3 quick_test_central.py
 ```
 
-**预期**: 看到 "✅ 所有测试通过！"
-
-#### 步骤 3: 连接 Cursor
-
-**终端 3**:
-```bash
-# 设置环境变量
-export ORTENSIA_SERVER=ws://localhost:8765
-
-# 重启 Cursor（确保环境变量生效）
-# 等待 10 秒
-
-# 查看日志
-cat /tmp/cursor_ortensia.log
-```
-
-**预期日志**: 看到 "✅ 已连接到中央Server"
-
-#### 步骤 4: 运行 Command Client
-
-**终端 4**:
-```bash
-cd "/Users/user/Documents/ cursorgirl/examples"
-python3 command_client_example.py
-```
-
-**预期结果**: 
-- Command Client 成功连接
-- 找到 Cursor 实例
-- 提示词成功发送
-- Cursor 输入框显示提示词
+✅ **成功！** 你会看到 Cursor Composer 收到命令并开始执行。
 
 ---
 
-## 📖 文档导航
+## 📝 发送你的第一个命令
 
-| 文档 | 用途 | 适合人群 |
-|------|------|----------|
-| `QUICK_START.md` (本文档) | 快速上手 | 所有人 |
-| `docs/PROTOCOL_USAGE_GUIDE.md` | 协议使用 | 开发者 |
-| `docs/END_TO_END_TESTING_GUIDE.md` | 完整测试 | 测试人员 |
-| `docs/WEBSOCKET_PROTOCOL.md` | 协议规范 | 架构师 |
-| `PROJECT_COMPLETION_SUMMARY.md` | 项目总结 | 管理者 |
+### Python 客户端示例
+
+```python
+import asyncio
+import websockets
+import json
+import time
+
+async def send_command():
+    async with websockets.connect('ws://localhost:8765') as ws:
+        # 1. 注册
+        await ws.send(json.dumps({
+            "type": "register",
+            "from": "my-client",
+            "to": "server",
+            "timestamp": int(time.time()),
+            "payload": {"client_type": "command_client"}
+        }))
+        
+        await ws.recv()  # 等待确认
+        
+        # 2. 发送命令 (需要知道 Cursor ID)
+        cursor_id = "cursor-xxxxx"  # 从日志获取
+        
+        await ws.send(json.dumps({
+            "type": "composer_send_prompt",
+            "from": "my-client",
+            "to": cursor_id,
+            "timestamp": int(time.time()),
+            "payload": {
+                "agent_id": "test",
+                "prompt": "写一个 Python 快速排序"
+            }
+        }))
+        
+        # 3. 接收结果
+        result = await ws.recv()
+        print(result)
+
+asyncio.run(send_command())
+```
 
 ---
 
-## 🔧 常见问题
+## 🔍 如何获取 Cursor ID
 
-### Q: Server 启动失败 "Address already in use"
+### 方法 1: 查看服务器日志
 
-**A**: 端口被占用，终止占用进程：
 ```bash
+tail -f /tmp/ws_server.log | grep "已注册"
+```
+
+你会看到类似：
+```
+✅ 客户端已注册: cursor-4rod28v0h (cursor_hook)
+```
+
+### 方法 2: 使用测试脚本
+
+测试脚本会自动发现 Cursor ID：
+
+```bash
+cd tests
+python3 quick_test_central.py
+```
+
+---
+
+## 📊 查看日志
+
+### Cursor Hook 日志
+
+```bash
+tail -f /tmp/cursor_ortensia.log
+```
+
+### 服务器日志
+
+```bash
+tail -f /tmp/ws_server.log
+```
+
+---
+
+## 🛑 停止服务
+
+```bash
+./scripts/STOP_ALL.sh
+```
+
+---
+
+## 🐛 故障排除
+
+### 问题 1: Hook 未连接
+
+**症状**: 测试脚本找不到 Cursor 客户端
+
+**解决**:
+```bash
+# 1. 检查 Hook 日志
+tail -30 /tmp/cursor_ortensia.log
+
+# 2. 重新注入
+cd cursor-injector
+./uninstall.sh
+./install-v9.sh
+
+# 3. 重启 Cursor
+```
+
+### 问题 2: 端口被占用
+
+**症状**: 服务器启动失败，提示端口 8765 已被占用
+
+**解决**:
+```bash
+# 停止现有服务
+./scripts/STOP_ALL.sh
+
+# 或手动查找并杀死进程
 lsof -i :8765
 kill -9 <PID>
 ```
 
-### Q: Cursor 无法连接到 Server
+### 问题 3: 命令无响应
 
-**A**: 检查环境变量：
+**症状**: 发送命令后没有反应
+
+**检查**:
 ```bash
-echo $ORTENSIA_SERVER  # 应显示 ws://localhost:8765
+# 1. 确认服务器运行
+lsof -i :8765
+
+# 2. 确认 Cursor Hook 已连接
+grep "已连接" /tmp/cursor_ortensia.log
+
+# 3. 确认 Cursor ID 正确
+tail -f /tmp/ws_server.log
 ```
 
-如果没有，重新设置并重启 Cursor：
+---
+
+## 📚 下一步
+
+### 查看文档
+- [README.md](./README.md) - 项目主页和详细说明
+- [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) - 完整功能清单
+- [docs/WEBSOCKET_PROTOCOL.md](./docs/WEBSOCKET_PROTOCOL.md) - 协议规范
+
+### 查看示例
 ```bash
-export ORTENSIA_SERVER=ws://localhost:8765
-# Cmd+Q 完全退出 Cursor，然后重新打开
+cd examples
+cat command_client_example.py
+cat semantic_command_client.py
 ```
 
-### Q: 提示词没有出现在 Cursor 输入框
+### 开发自己的客户端
+参考 `examples/` 目录中的示例代码，使用 Ortensia Protocol 与 Cursor 通信。
 
-**A**: 
-1. 检查 Server 日志，确认消息路由成功
-2. 查看 Cursor 日志：`cat /tmp/cursor_ortensia.log`
-3. 确认 Cursor ID 正确（在 Server 和 Client 日志中）
+---
 
-### Q: 想切换回本地模式
+## 🎯 常用命令速查
 
-**A**: 取消环境变量并重启 Cursor：
 ```bash
-unset ORTENSIA_SERVER
-# 重启 Cursor
+# 安装
+cd cursor-injector && ./install-v9.sh
+
+# 启动服务器
+./scripts/START_ALL.sh
+
+# 测试
+cd tests && python3 quick_test_central.py
+
+# 查看日志
+tail -f /tmp/cursor_ortensia.log    # Cursor
+tail -f /tmp/ws_server.log           # 服务器
+
+# 停止
+./scripts/STOP_ALL.sh
+
+# 重新安装
+cd cursor-injector && ./uninstall.sh && ./install-v9.sh
 ```
 
 ---
 
-## 📊 系统架构（一图看懂）
+## 💡 提示
 
-```
-┌─────────────────────────────────────────┐
-│    中央 Server (port 8765)              │
-│    bridge/websocket_server.py           │
-│                                         │
-│  • 客户端注册管理                        │
-│  • 消息路由                              │
-│  • 事件广播                              │
-│  • 心跳检测                              │
-└──────┬──────────────┬──────────────┬───┘
-       │              │              │
-       v              v              v
-   ┌──────┐      ┌──────┐      ┌──────┐
-   │Cursor│      │ CC   │      │AITuber│
-   │ Hook │      │Client│      │Client│
-   └──┬───┘      └──────┘      └──────┘
-      │
-      v
-   ┌──────┐
-   │Cursor│
-   │  UI  │
-   └──────┘
-```
-
-**CC** = Command Client（发送自动化命令）
+1. **首次使用**: 确保先运行 `install-v9.sh` 安装 Hook
+2. **每次使用**: 先启动服务器，再启动 Cursor
+3. **开发调试**: 保持日志窗口打开以便实时查看
+4. **出现问题**: 先查看日志，再重启服务
 
 ---
 
-## 💡 核心概念
+## ✅ 验证安装
 
-### 双重角色设计
+运行以下命令确保一切正常：
 
-Cursor Hook V8 同时扮演两个角色：
+```bash
+# 1. 检查文件
+ls cursor-injector/install-v9.sh
+ls bridge/websocket_server.py
+ls tests/quick_test_central.py
 
-1. **本地 WebSocket Server (端口 9876)**
-   - 用途：开发调试
-   - 特点：无需中央 Server
-   - 使用：直接用 Python 脚本连接
+# 2. 检查权限
+ls -l scripts/*.sh
 
-2. **中央 Server 客户端**
-   - 用途：生产环境
-   - 特点：通过 Server 协调多客户端
-   - 使用：设置 `ORTENSIA_SERVER` 环境变量
-
-**自动切换**: 根据环境变量自动选择模式，无需修改代码
-
-### 即时响应 + 事件驱动
-
-```
-Command Client  ─[发送命令]→  Server  ─[路由]→  Cursor Hook
-                 ↓
-                返回成功/失败（即时）
-
-Cursor Hook  ─[任务开始]→  Server  ─[广播]→  所有客户端
-             ─[任务完成]→  Server  ─[广播]→  所有客户端
+# 3. 检查 Python 依赖
+python3 -c "import websockets; print('✅ websockets 已安装')"
 ```
 
-**优势**: 不阻塞，支持长任务，易于实现状态机
-
 ---
 
-## 🎯 下一步
-
-完成快速开始后：
-
-1. ✅ 阅读 `docs/PROTOCOL_USAGE_GUIDE.md` 了解协议详情
-2. ✅ 参考 `examples/command_client_example.py` 开发自己的客户端
-3. ✅ 查看 `docs/END_TO_END_TESTING_GUIDE.md` 进行完整测试
-4. ✅ 集成到 Ortensia 主系统
-
----
-
-## 📞 获取帮助
-
-- **协议规范**: `docs/WEBSOCKET_PROTOCOL.md`
-- **使用指南**: `docs/PROTOCOL_USAGE_GUIDE.md`
-- **测试指南**: `docs/END_TO_END_TESTING_GUIDE.md`
-- **项目总结**: `PROJECT_COMPLETION_SUMMARY.md`
-
----
-
-*祝你使用愉快！🌸*
-
+**准备就绪！开始使用 Ortensia 控制 Cursor！** 🎉

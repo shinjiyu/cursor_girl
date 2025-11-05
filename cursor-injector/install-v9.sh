@@ -116,13 +116,10 @@ cat > "$MAIN_JS" << 'INJECT_END'
         // 第二部分：作为 Client 连接到中央Server
         // ====================================================================
         
-        const CENTRAL_SERVER_URL = process.env.ORTENSIA_SERVER || null;
+        // 🌸 中央服务器地址（hardcoded）
+        const CENTRAL_SERVER_URL = 'ws://localhost:8765';
         
-        if (!CENTRAL_SERVER_URL) {
-            log('💡 未设置 ORTENSIA_SERVER 环境变量，仅本地模式运行');
-            log('   设置方式: export ORTENSIA_SERVER=ws://192.168.1.100:8765');
-            return;
-        }
+        log(`💡 使用硬编码的中央服务器地址: ${CENTRAL_SERVER_URL}`);
         
         log('');
         log('══════════════════════════════════════════════════════════════');
@@ -160,12 +157,17 @@ cat > "$MAIN_JS" << 'INJECT_END'
         // 发送消息到中央Server
         function sendToCentral(message) {
             if (centralWs && centralWs.readyState === 1) { // 1 = OPEN
-                const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
-                centralWs.send(messageStr);
-                log(`📤 [中央] 发送: ${messageStr.substring(0, 100)}...`);
-                return true;
+                try {
+                    const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+                    centralWs.send(messageStr);
+                    log(`📤 [中央] 发送: ${messageStr.substring(0, 100)}...`);
+                    return true;
+                } catch (error) {
+                    log(`❌ [中央] 发送失败: ${error.message}`);
+                    return false;
+                }
             } else {
-                log('⚠️  [中央] WebSocket 未连接，无法发送消息');
+                log(`⚠️  [中央] WebSocket 未连接 (readyState: ${centralWs ? centralWs.readyState : 'null'})`);
                 return false;
             }
         }
@@ -590,10 +592,16 @@ cat > "$MAIN_JS" << 'INJECT_END'
                     log('══════════════════════════════════════════════════════════════');
                     log('  ✅ 已连接到中央Server！');
                     log(`  🔑 Cursor ID: ${cursorId}`);
+                    log(`  📡 WebSocket readyState: ${centralWs.readyState}`);
                     log('══════════════════════════════════════════════════════════════');
                     log('');
                     
                     reconnectDelay = 1000;
+                    
+                    // 等待一小段时间，确保连接完全建立
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    log(`📡 等待后 readyState: ${centralWs.readyState}`);
                     
                     await register();
                     
