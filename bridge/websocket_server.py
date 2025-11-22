@@ -78,6 +78,7 @@ class ClientRegistry:
     def __init__(self):
         self.clients: Dict[str, ClientInfo] = {}  # client_id -> ClientInfo
         self.ws_to_id: Dict = {}  # websocket -> client_id
+        self.workspace_to_cursor: Dict[str, str] = {}  # workspace -> cursor_id
     
     def register(self, websocket, client_id: str, client_type: str, metadata: dict = None):
         """注册客户端"""
@@ -97,7 +98,16 @@ class ClientRegistry:
         if websocket in self.ws_to_id:
             client_id = self.ws_to_id[websocket]
             if client_id in self.clients:
-                client_type = self.clients[client_id].client_type
+                client_info = self.clients[client_id]
+                client_type = client_info.client_type
+                
+                # 如果是 cursor_hook，清理 workspace 映射
+                if client_type == 'cursor_hook':
+                    workspace = client_info.metadata.get('workspace')
+                    if workspace and self.workspace_to_cursor.get(workspace) == client_id:
+                        del self.workspace_to_cursor[workspace]
+                        logger.info(f"🗑️  清理 workspace 映射: {workspace}")
+                
                 del self.clients[client_id]
                 logger.info(f"📤 注销客户端: {client_id} ({client_type})")
             del self.ws_to_id[websocket]
@@ -121,6 +131,19 @@ class ClientRegistry:
         """更新客户端心跳"""
         if client_id in self.clients:
             self.clients[client_id].update_heartbeat()
+    
+    def register_cursor_workspace(self, cursor_id: str, workspace: str):
+        """注册 Cursor 的 workspace 映射"""
+        if workspace:
+            self.workspace_to_cursor[workspace] = cursor_id
+            logger.info(f"🗺️  注册 workspace 映射: {workspace} → {cursor_id}")
+    
+    def get_cursor_by_workspace(self, workspace: str) -> Optional[str]:
+        """根据 workspace 获取对应的 Cursor ID"""
+        cursor_id = self.workspace_to_cursor.get(workspace)
+        if cursor_id and cursor_id in self.clients:
+            return cursor_id
+        return None
     
     def get_stats(self) -> dict:
         """获取统计信息"""
@@ -234,6 +257,12 @@ async def handle_register(client_info: ClientInfo, message: Message):
     registry.clients[client_id] = client_info
     registry.ws_to_id[client_info.websocket] = client_id
     
+    # ✅ 如果是 cursor_hook，注册 workspace 映射
+    if client_info.client_type == 'cursor_hook':
+        workspace = payload.get('workspace')
+        if workspace:
+            registry.register_cursor_workspace(client_id, workspace)
+    
     logger.info(f"✅ [{client_id}] 注册成功: {client_info.client_type}")
     
     # 发送确认
@@ -266,6 +295,40 @@ async def handle_disconnect(client_info: ClientInfo, message: Message):
     reason = payload.get('reason', 'unknown')
     
     logger.info(f"👋 [{client_info.client_id}] 主动断开: {reason}")
+
+
+async def find_cursor_for_agent_hook(message: Message) -> Optional[ClientInfo]:
+    """
+    根据 Agent Hook 消息找到对应的 Cursor Hook
+    
+    使用场景：
+    - Agent Hook 发送 "complete" 事件
+    - 想给对应的 Cursor 发送新任务
+    
+    返回：对应的 Cursor ClientInfo，如果找不到则返回 None
+    """
+    payload = message.payload
+    workspace = payload.get('workspace')
+    
+    if not workspace:
+        logger.warning(f"⚠️  Agent Hook 消息缺少 workspace 字段")
+        return None
+    
+    # 根据 workspace 查找对应的 Cursor
+    cursor_id = registry.get_cursor_by_workspace(workspace)
+    
+    if not cursor_id:
+        logger.warning(f"⚠️  未找到 workspace 对应的 Cursor: {workspace}")
+        return None
+    
+    cursor_client = registry.get_by_id(cursor_id)
+    
+    if not cursor_client:
+        logger.warning(f"⚠️  Cursor 客户端已断开: {cursor_id}")
+        return None
+    
+    logger.info(f"✅ 找到对应的 Cursor: {cursor_id}")
+    return cursor_client
 
 
 async def handle_composer_send_prompt(client_info: ClientInfo, message: Message):
