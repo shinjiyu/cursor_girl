@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ortensia V9 - 停止所有服务
+# Ortensia V9 - 强制停止所有服务（包括 Cursor）
 
 # 颜色定义
 GREEN='\033[0;32m'
@@ -10,8 +10,27 @@ NC='\033[0m' # No Color
 
 echo ""
 echo "╔═══════════════════════════════════════════════════════════════════╗"
-echo "║          🌸 Ortensia V9 - 停止服务                               ║"
+echo "║          ⚠️  Ortensia V9 - 强制停止所有服务（包括 Cursor）      ║"
 echo "╚═══════════════════════════════════════════════════════════════════╝"
+echo ""
+
+# 停止 Cursor IDE
+if pgrep -f "Cursor.app" > /dev/null; then
+    echo -e "${RED}🛑 正在关闭 Cursor IDE...${NC}"
+    pkill -f "Cursor.app"
+    sleep 2
+    
+    # 检查是否还在运行
+    if pgrep -f "Cursor.app" > /dev/null; then
+        echo -e "${YELLOW}   使用强制停止...${NC}"
+        pkill -9 -f "Cursor.app"
+    fi
+    
+    echo -e "${GREEN}✅ Cursor IDE 已关闭${NC}"
+else
+    echo -e "${YELLOW}⚠️  Cursor IDE 未运行${NC}"
+fi
+
 echo ""
 
 # 停止中央服务器
@@ -39,21 +58,25 @@ fi
 
 echo ""
 
-# 停止其他可能的 websocket_server 进程（确保不影响 Cursor）
+# 停止其他可能的 websocket_server 进程
 if pgrep -f "websocket_server.py" > /dev/null; then
     echo -e "${BLUE}🛑 清理其他 WebSocket 进程...${NC}"
-    # 使用精确匹配，只杀死 websocket_server.py 进程，不影响 Cursor
     pkill -f "python.*websocket_server.py"
     echo -e "${GREEN}✅ 已清理${NC}"
 fi
 
 echo ""
-echo -e "${YELLOW}ℹ️  注意: 此脚本不会关闭 Cursor IDE${NC}"
-echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo -e "${BLUE}📋 当前状态：${NC}"
 echo ""
+
+# 检查 Cursor
+if pgrep -f "Cursor.app" > /dev/null; then
+    echo -e "  ${RED}❌${NC} Cursor IDE 仍在运行"
+else
+    echo -e "  ${GREEN}✅${NC} Cursor IDE 已关闭"
+fi
 
 # 检查端口
 if lsof -i :8765 &> /dev/null; then
@@ -67,10 +90,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo -e "${BLUE}💡 提示：${NC}"
 echo ""
-echo "  - ✅ Cursor IDE 不会被关闭（只停止中央服务器）"
-echo "  - 💡 Cursor Hook 会在 Cursor 关闭时自动停止"
-echo "  - 🔄 如需重启服务: ./scripts/START_ALL.sh"
-echo "  - ⚠️  如需关闭 Cursor: Cmd+Q 或 pkill -f Cursor.app"
+echo "  - ⚠️  此脚本会关闭 Cursor IDE"
+echo "  - 💡 如只需停止服务器: ./scripts/STOP_ALL.sh"
+echo "  - 🔄 如需重启所有服务: ./scripts/START_ALL.sh"
 echo ""
 echo -e "${GREEN}✨ 完成！${NC}"
 echo ""
+
