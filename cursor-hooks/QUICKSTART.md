@@ -1,114 +1,125 @@
-# Cursor Hooks 快速开始
+# Cursor Agent Hooks - 快速开始
 
-## 🎯 5 分钟快速体验
+## ⚡ 5 分钟快速安装
 
-### 1. 复制 Hooks 到项目 (1分钟)
+### 1️⃣ 启动 Ortensia 中央服务器
 
 ```bash
-# 进入你的测试项目目录
-cd ~/your-test-project
-
-# 复制 hooks
-cp -r "/Users/user/Documents/ cursorgirl/cursor-hooks/.cursor" .
-
-# 设置权限
-chmod +x .cursor/hooks/*
+cd /path/to/cursorgirl
+./scripts/START_ALL.sh
 ```
 
-### 2. 启动オルテンシア (1分钟)
+### 2️⃣ 安装 Agent Hooks（全局）
 
 ```bash
-# 打开新终端
-cd "/Users/user/Documents/ cursorgirl"
-./START_ALL.sh
-
-# 等待启动完成，看到:
-# ✅ WebSocket 服务器运行中
-# ✅ Next.js 开发服务器运行中
-# ✅ Electron 窗口已打开
+cd /path/to/cursorgirl/cursor-hooks
+./deploy.sh
 ```
 
-### 3. 在 Cursor 中测试 (3分钟)
+按 `y` 确认安装。
 
-1. **在 Cursor 中打开项目**
-   ```bash
-   cursor ~/your-test-project
-   ```
+### 3️⃣ 重启 Cursor
 
-2. **测试文件保存**
-   - 创建或编辑任意文件
-   - 按 `Cmd+S` 保存
-   - 👀 观察オルテンシア说: "保存成功~" 😊
+**完全退出** Cursor（Cmd+Q），然后重新打开。
 
-3. **测试 Git 提交**
-   ```bash
-   # 在项目中
-   git init  # 如果还没有 Git 仓库
-   git add .
-   git commit -m "test: 测试オルテンシア"
-   
-   # 👀 观察オルテンシア说: "太棒了！代码提交成功~" 🎉
-   ```
+### 4️⃣ 测试
 
-## 🎉 成功！
+在 Cursor 中：
+1. 打开任意项目
+2. 按 `Cmd+K`
+3. 输入："创建一个 test.py 文件"
+4. 观察 Ortensia 的反应！🎉
 
-如果你看到オルテンシア响应了，恭喜！Cursor Hooks 已经工作了！
+## 📊 验证安装
 
-## 📋 查看日志
+### 查看已安装的 Hooks
 
 ```bash
-# 实时查看 hook 执行日志
-tail -f /tmp/cursor-hooks.log
-
-# 查看オルテンシア服务日志
-tail -f /tmp/websocket_server.log
+ls -la ~/.cursor-agent/hooks/
 ```
 
-## 🐛 常见问题
+应该看到 9 个 `.py` 文件。
 
-### オルテンシア 没有反应？
+### 查看配置
 
 ```bash
-# 检查 WebSocket 服务器
+cat ~/.cursor/hooks.json
+```
+
+### 实时查看日志
+
+```bash
+tail -f /tmp/cursor-agent-hooks.log
+```
+
+### 查看中央服务器日志
+
+```bash
+tail -f /tmp/ws_server.log
+```
+
+## 🎯 Agent Hooks 会触发什么？
+
+| 你的操作 | Agent Hook | Ortensia 反应 |
+|---------|-----------|--------------|
+| Agent 执行命令 | `beforeShellExecution` | "要执行命令了，让我检查一下..." 🤔 |
+| Agent 编辑文件 | `afterFileEdit` | "文件已编辑！看起来不错~" 😊 |
+| Agent 任务完成 | `stop` | "太棒了！任务完成！" 🎉 |
+| Agent 读取文件 | `beforeReadFile` | "正在读取文件..." 📖 |
+| Agent 调用工具 | `beforeMCPExecution` | "要使用工具了..." 🔧 |
+
+## 🔧 常见问题
+
+### Q: Ortensia 没有说话？
+
+**A:** 检查中央服务器是否运行：
+```bash
 lsof -i :8765
-
-# 如果没有运行，启动它
-cd "/Users/user/Documents/ cursorgirl/bridge"
-source venv/bin/activate
-python websocket_server.py
-
-# 检查日志
-tail -20 /tmp/cursor-hooks.log
 ```
 
-### Hook 没有触发？
-
+如果没有运行：
 ```bash
-# 手动测试 hook
-cd ~/your-test-project
-./.cursor/hooks/post-save "test.txt" "$(pwd)"
-
-# 应该看到日志输出
+cd /path/to/cursorgirl
+./scripts/START_ALL.sh
 ```
 
-## 📚 更多文档
+### Q: Agent Hooks 没有触发？
 
-- `README.md` - 完整功能说明
-- `INSTALL.md` - 详细安装指南
-- `STATUS.md` - 开发状态
+**A:** 
+1. 确认 Cursor 版本 >= 0.42.0
+2. 检查配置：`cat ~/.cursor/hooks.json`
+3. 重启 Cursor（完全退出后重开）
 
-## ✨ 支持的事件
+### Q: 如何卸载？
 
-当前版本支持：
-- ✅ 文件保存 - "保存成功~"
-- ✅ Git 提交 - "太棒了！代码提交成功~"
+**A:**
+```bash
+rm -rf ~/.cursor-agent/
+rm ~/.cursor/hooks.json
+```
 
-即将支持：
-- ⏳ 构建成功/失败
-- ⏳ 测试通过/失败
-- ⏳ 代码错误检测
+然后重启 Cursor。
 
----
+### Q: 如何修改服务器地址？
 
-**享受和オルテンシア一起编程的乐趣！** 🎀✨
+**A:** 编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
+```python
+self.ws_server = "ws://your-server:port"
+```
 
+## 📚 下一步
+
+- 查看完整文档：[README.md](README.md)
+- 了解详细安装选项：[INSTALL.md](INSTALL.md)
+- 自定义 Hook 行为：编辑 `~/.cursor-agent/hooks/*.py`
+
+## 🎉 完成！
+
+现在你的 Cursor AI Agent 已经和 Ortensia 连接了！
+
+每次 Agent 执行操作时，Ortensia 都会：
+- 🎤 语音反馈
+- 🎭 表情动作
+- 📊 详细日志
+
+享受和虚拟角色一起编程的乐趣吧！✨

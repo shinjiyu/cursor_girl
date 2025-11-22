@@ -1,288 +1,432 @@
-# Cursor Hooks 安装和使用指南
+# Cursor Agent Hooks - 详细安装指南
 
-## ✅ 测试结果
+## 📋 目录
 
-所有 Hooks 测试通过：
-- ✅ post-save Hook - 文件保存事件
-- ✅ post-commit Hook - Git 提交事件
+- [系统要求](#系统要求)
+- [安装步骤](#安装步骤)
+- [配置选项](#配置选项)
+- [验证安装](#验证安装)
+- [故障排查](#故障排查)
+- [卸载](#卸载)
 
-## 📦 安装方法
+## 系统要求
 
-### 方法 1: 复制到现有项目（推荐）
+### 必需
 
-```bash
-# 1. 进入你的项目目录
-cd /path/to/your/project
+- **Cursor IDE** >= 0.42.0
+- **Python** >= 3.7
+- **macOS / Linux / Windows** (推荐 macOS/Linux)
 
-# 2. 复制 .cursor 目录
-cp -r "/Users/user/Documents/ cursorgirl/cursor-hooks/.cursor" .
+### 依赖
 
-# 3. 确保 hooks 可执行
-chmod +x .cursor/hooks/*
+- `websockets` - WebSocket 客户端库
+- `asyncio` - 异步 I/O（Python 标准库）
 
-# 4. 配置 WebSocket 服务器地址（如果需要）
-vi .cursor/hooks/config.sh
-```
-
-### 方法 2: 使用符号链接
+安装依赖：
 
 ```bash
-# 1. 进入你的项目目录
-cd /path/to/your/project
-
-# 2. 创建符号链接
-ln -s "/Users/user/Documents/ cursorgirl/cursor-hooks/.cursor" .cursor
-
-# 3. 确保 hooks 可执行
-chmod +x .cursor/hooks/*
+pip3 install websockets
 ```
 
-## 🔧 配置
-
-编辑 `.cursor/hooks/config.sh`：
+或使用项目的 requirements.txt：
 
 ```bash
-# WebSocket 服务器地址
-WS_SERVER="ws://localhost:8765"
-
-# オルテンシア Bridge 路径
-BRIDGE_PATH="/Users/user/Documents/ cursorgirl/bridge"
-
-# Python 虚拟环境路径
-VENV_PATH="${BRIDGE_PATH}/venv"
-
-# 是否启用调试模式
-DEBUG=true
-
-# 是否启用 WebSocket 发送
-ENABLE_WEBSOCKET=true
+cd /path/to/cursorgirl/cursor-hooks
+pip3 install -r requirements.txt
 ```
 
-## 🚀 使用方法
+## 安装步骤
 
-### 前置条件
+### 方法 1: 自动安装（推荐）
 
-确保オルテンシア服务正在运行：
+#### 步骤 1: 启动 Ortensia 中央服务器
 
 ```bash
-# Terminal 1: WebSocket 服务器
-cd "/Users/user/Documents/ cursorgirl/bridge"
-source venv/bin/activate
-python websocket_server.py
-
-# Terminal 2: AITuber Kit（可选，用于可视化）
-cd "/Users/user/Documents/ cursorgirl/aituber-kit"
-npm run dev
-# 浏览器访问: http://localhost:3000/assistant
+cd /path/to/cursorgirl
+./scripts/START_ALL.sh
 ```
 
-### Cursor 中使用
+验证服务器运行：
+```bash
+lsof -i :8765
+```
 
-1. **打开项目**: 在 Cursor 中打开安装了 hooks 的项目
+应该看到：
+```
+COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+python3   xxx user   x    IPv4 xxxxxx      0t0  TCP localhost:8765 (LISTEN)
+```
 
-2. **正常编码**: Cursor 会自动触发 hooks
-
-3. **观察反应**: 
-   - 保存文件 → オルテンシア: "保存成功~" 😊
-   - Git commit → オルテンシア: "太棒了！代码提交成功~" 🎉
-
-## 🎯 支持的事件
-
-目前已实现：
-- ✅ **post-save** - 文件保存后
-- ✅ **post-commit** - Git 提交后
-
-计划实现：
-- ⏳ pre-commit - Git 提交前
-- ⏳ post-push - Git 推送后
-- ⏳ on-build - 构建时
-- ⏳ on-test - 测试时
-- ⏳ on-error - 错误时
-
-## 📝 日志查看
+#### 步骤 2: 运行部署脚本
 
 ```bash
-# 实时查看日志
-tail -f /tmp/cursor-hooks.log
-
-# 查看最近 50 行
-tail -50 /tmp/cursor-hooks.log
-
-# 清空日志
-> /tmp/cursor-hooks.log
+cd /path/to/cursorgirl/cursor-hooks
+./deploy.sh
 ```
 
-## 🐛 故障排查
+脚本会：
+1. 检查 `~/.cursor-agent/` 是否已存在
+2. 询问是否覆盖（如果存在）
+3. 复制所有 Agent Hooks 到全局目录
+4. 设置执行权限
+5. 创建 Cursor 配置文件
+6. 显示部署摘要
 
-### Hook 没有触发
+#### 步骤 3: 重启 Cursor
 
-1. **检查 hooks 是否可执行**:
-   ```bash
-   ls -l .cursor/hooks/
-   # 应该看到 -rwxr-xr-x 权限
-   ```
-
-2. **检查配置文件**:
-   ```bash
-   cat .cursor/hooks/config.sh
-   # 确保路径正确
-   ```
-
-3. **手动测试 hook**:
-   ```bash
-   ./.cursor/hooks/post-save "test.txt" "$(pwd)"
-   ```
-
-### オルテンシア 没有反应
-
-1. **检查 WebSocket 服务器**:
-   ```bash
-   lsof -i :8000
-   # 应该看到 Python 进程
-   ```
-
-2. **检查日志**:
-   ```bash
-   tail -50 /tmp/cursor-hooks.log
-   # 查找错误信息
-   ```
-
-3. **测试 WebSocket 连接**:
-   ```bash
-   cd "/Users/user/Documents/ cursorgirl/bridge"
-   source venv/bin/activate
-   python websocket_client.py
-   ```
-
-### Python 环境问题
+**重要**：必须完全退出 Cursor（Cmd+Q），而不是只关闭窗口。
 
 ```bash
-# 检查虚拟环境
-ls -la "/Users/user/Documents/ cursorgirl/bridge/venv"
+# macOS
+osascript -e 'quit app "Cursor"'
+open -a Cursor
 
-# 重新创建虚拟环境
-cd "/Users/user/Documents/ cursorgirl/bridge"
-rm -rf venv
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Linux
+killall cursor
+cursor &
 ```
 
-## 🧪 测试
+### 方法 2: 手动安装
+
+#### 步骤 1: 创建目录
 
 ```bash
-cd "/Users/user/Documents/ cursorgirl/cursor-hooks"
-
-# 测试单个 hook
-./test/test_post_save.sh
-./test/test_post_commit.sh
-
-# 运行所有测试
-./test/test_all.sh
+mkdir -p ~/.cursor-agent/hooks
+mkdir -p ~/.cursor-agent/lib
+mkdir -p ~/.cursor
 ```
 
-## 📊 工作原理
+#### 步骤 2: 复制文件
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Cursor 事件流程                                        │
-└─────────────────────────────────────────────────────────┘
+```bash
+cd /path/to/cursorgirl/cursor-hooks
 
-1. 保存文件
-   ↓
-2. Cursor 触发 post-save hook
-   ↓
-3. Hook 脚本执行
-   ├─ 收集文件信息（文件名、类型、路径）
-   ├─ 记录日志
-   └─ 调用 Python WebSocket 发送器
-      ↓
-4. WebSocket 发送器
-   ├─ 连接到 WebSocket 服务器 (ws://localhost:8000/ws)
-   ├─ 构建消息（文件保存 → "保存成功~" + neutral 情绪）
-   └─ 发送消息
-      ↓
-5. WebSocket 服务器
-   ├─ 接收消息
-   ├─ 生成 TTS 音频（macOS TTS）
-   └─ 广播给所有客户端
-      ↓
-6. AITuber Kit 前端
-   ├─ 接收消息
-   ├─ 更新表情和动作
-   └─ 播放语音
-      ↓
-7. オルテンシア 说话 ✨
-   "保存成功~" 😊
+# 复制 hooks
+cp hooks/*.py ~/.cursor-agent/hooks/
+
+# 复制库文件
+cp lib/*.py ~/.cursor-agent/lib/
+cp lib/*.sh ~/.cursor-agent/lib/ 2>/dev/null || true
+
+# 复制配置
+cp hooks.json ~/.cursor-agent/
+cp run_hook.sh ~/.cursor-agent/
 ```
 
-## 🎨 自定义
+#### 步骤 3: 设置权限
 
-### 添加新的事件类型
+```bash
+chmod +x ~/.cursor-agent/hooks/*.py
+chmod +x ~/.cursor-agent/lib/*.py
+chmod +x ~/.cursor-agent/lib/*.sh 2>/dev/null || true
+chmod +x ~/.cursor-agent/run_hook.sh
+```
 
-1. **创建 hook 脚本**:
-   ```bash
-   cp .cursor/hooks/post-save .cursor/hooks/on-error
-   chmod +x .cursor/hooks/on-error
-   ```
+#### 步骤 4: 创建 Cursor 配置
 
-2. **修改脚本内容**: 编辑 `on-error`
+```bash
+ln -sf ~/.cursor-agent/hooks.json ~/.cursor/hooks.json
+```
 
-3. **更新消息映射**: 编辑 `lib/websocket_sender.py`
-   ```python
-   messages = {
-       # ...
-       'on_error': ('出错了...别担心，我们一起修复它~', 'sad'),
-   }
-   ```
+#### 步骤 5: 验证配置
 
-4. **测试**: 创建对应的测试脚本
+```bash
+ls -la ~/.cursor-agent/
+ls -la ~/.cursor/hooks.json
+```
 
-### 自定义消息和情绪
+#### 步骤 6: 重启 Cursor
 
-编辑 `cursor-hooks/lib/websocket_sender.py`:
+完全退出并重新打开 Cursor。
+
+## 配置选项
+
+### 修改 WebSocket 服务器地址
+
+编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
 
 ```python
-def get_message_for_event(event_type: str, event_data: dict) -> tuple[str, str]:
-    messages = {
-        'file_save': ('你的自定义消息', '自定义情绪'),
-        # ...
-    }
+# 第 37 行
+self.ws_server = "ws://localhost:8765"
 ```
 
-支持的情绪类型：
-- `neutral` - 中性
-- `happy` - 开心
-- `sad` - 难过
-- `angry` - 生气
-- `relaxed` - 放松
-- `surprised` - 惊讶
-- `excited` - 兴奋
+#### 场景 1: 本地开发（默认）
 
-## 📚 参考
+```python
+self.ws_server = "ws://localhost:8765"
+```
 
-- [Cursor Hooks 官方文档](https://cursor.com/en-US/docs/agent/hooks)
-- オルテンシア 项目: `/Users/user/Documents/ cursorgirl`
-- WebSocket 架构: `WEBSOCKET_ARCHITECTURE.md`
+#### 场景 2: 局域网服务器
 
-## ✨ 效果演示
+```python
+self.ws_server = "ws://192.168.1.100:8765"
+```
+
+#### 场景 3: 远程服务器
+
+```python
+self.ws_server = "ws://your-domain.com:8765"
+```
+
+**注意**：修改后需要重启 Cursor。
+
+### 自定义日志路径
+
+编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
+
+```python
+# 第 16 行
+log_file = Path("/tmp/cursor-agent-hooks.log")
+
+# 修改为自定义路径
+log_file = Path("/your/custom/path/hooks.log")
+```
+
+### 启用/禁用特定 Hook
+
+编辑 `~/.cursor/hooks.json`：
+
+```json
+{
+  "beforeShellExecution": {
+    "command": "~/.cursor-agent/run_hook.sh beforeShellExecution",
+    "enabled": true  // 改为 false 禁用
+  }
+}
+```
+
+## 验证安装
+
+### 1. 检查文件结构
 
 ```bash
-💻 你: 保存文件 (Cmd+S)
-🎀 オルテンシア: "保存成功~" 😊
-
-💻 你: git commit -m "feat: add feature"
-🎀 オルテンシア: "太棒了！代码提交成功~" 🎉
-
-💻 你: npm test (测试通过)
-🎀 オルテンシア: "测试通过！你真厉害！" 🎊
+tree ~/.cursor-agent/
 ```
 
----
+期望输出：
+```
+~/.cursor-agent/
+├── hooks/
+│   ├── afterAgentResponse.py
+│   ├── afterFileEdit.py
+│   ├── afterMCPExecution.py
+│   ├── afterShellExecution.py
+│   ├── beforeMCPExecution.py
+│   ├── beforeReadFile.py
+│   ├── beforeShellExecution.py
+│   ├── beforeSubmitPrompt.py
+│   └── stop.py
+├── lib/
+│   ├── agent_hook_handler.py
+│   └── websocket_sender.sh
+├── hooks.json
+└── run_hook.sh
+```
 
-**状态**: ✅ 测试通过，可以使用  
-**版本**: 1.0.0  
-**最后更新**: 2025-11-01
+### 2. 检查配置链接
 
-🎊 **享受和オルテンシア一起编程的乐趣吧！**
+```bash
+ls -la ~/.cursor/hooks.json
+```
 
+应该是符号链接：
+```
+~/.cursor/hooks.json -> /Users/xxx/.cursor-agent/hooks.json
+```
+
+### 3. 手动测试 Hook
+
+```bash
+echo '{"command":"ls -la"}' | python3 ~/.cursor-agent/hooks/beforeShellExecution.py
+```
+
+期望输出：
+```
+[2025-11-22 12:00:00] [INFO] 🎣 [beforeShellExecution] Agent Hook 启动
+[2025-11-22 12:00:00] [INFO] ✅ Hook 执行成功
+```
+
+### 4. 查看日志
+
+```bash
+tail -f /tmp/cursor-agent-hooks.log
+```
+
+### 5. 在 Cursor 中触发
+
+在 Cursor 中：
+1. 按 `Cmd+K` 打开 Composer
+2. 输入："创建一个 hello.py 文件"
+3. 观察日志文件是否有新内容
+
+## 故障排查
+
+### 问题 1: Hook 没有触发
+
+**症状**：Agent 执行操作但日志没有更新
+
+**解决方案**：
+
+1. **检查 Cursor 版本**：
+   ```
+   Cursor -> About Cursor
+   ```
+   确保版本 >= 0.42.0
+
+2. **检查配置文件**：
+   ```bash
+   cat ~/.cursor/hooks.json
+   ```
+   应该有内容，而不是空文件
+
+3. **检查权限**：
+   ```bash
+   ls -la ~/.cursor-agent/hooks/
+   ```
+   所有 `.py` 文件应该有 `x`（可执行）权限
+
+4. **重启 Cursor**：
+   完全退出（Cmd+Q）后重新打开
+
+### 问题 2: Ortensia 没有反应
+
+**症状**：Hook 触发了但 Ortensia 没有说话
+
+**解决方案**：
+
+1. **检查中央服务器**：
+   ```bash
+   lsof -i :8765
+   ```
+   如果没有进程，启动服务器：
+   ```bash
+   cd /path/to/cursorgirl
+   ./scripts/START_ALL.sh
+   ```
+
+2. **检查服务器日志**：
+   ```bash
+   tail -f /tmp/ws_server.log
+   ```
+   应该看到 Hook 的消息
+
+3. **检查服务器地址**：
+   ```bash
+   grep "ws_server" ~/.cursor-agent/lib/agent_hook_handler.py
+   ```
+   确保地址正确
+
+4. **手动测试连接**：
+   ```bash
+   cd /path/to/cursorgirl
+   python3 tests/test_aituber_integration.py
+   ```
+
+### 问题 3: 权限错误
+
+**症状**：`Permission denied` 错误
+
+**解决方案**：
+
+```bash
+chmod +x ~/.cursor-agent/hooks/*.py
+chmod +x ~/.cursor-agent/lib/*.py
+chmod +x ~/.cursor-agent/run_hook.sh
+```
+
+### 问题 4: Python 模块找不到
+
+**症状**：`ModuleNotFoundError: No module named 'websockets'`
+
+**解决方案**：
+
+```bash
+pip3 install websockets
+```
+
+或者：
+
+```bash
+cd /path/to/cursorgirl/cursor-hooks
+pip3 install -r requirements.txt
+```
+
+### 问题 5: 日志文件没有创建
+
+**症状**：`/tmp/cursor-agent-hooks.log` 不存在
+
+**解决方案**：
+
+1. **手动创建**：
+   ```bash
+   touch /tmp/cursor-agent-hooks.log
+   chmod 666 /tmp/cursor-agent-hooks.log
+   ```
+
+2. **检查磁盘空间**：
+   ```bash
+   df -h /tmp
+   ```
+
+3. **使用自定义路径**（见配置选项）
+
+## 卸载
+
+### 完全卸载
+
+```bash
+# 删除 Agent Hooks
+rm -rf ~/.cursor-agent/
+
+# 删除 Cursor 配置
+rm ~/.cursor/hooks.json
+
+# 清理日志
+rm /tmp/cursor-agent-hooks.log
+```
+
+### 重启 Cursor
+
+完全退出并重新打开 Cursor。
+
+### 验证卸载
+
+```bash
+ls ~/.cursor-agent/    # 应该不存在
+ls ~/.cursor/hooks.json # 应该不存在
+```
+
+## 高级选项
+
+### 多项目配置
+
+Agent Hooks 是**全局安装**的，所有 Cursor 项目都会使用同一套 Hooks。
+
+如果需要为不同项目使用不同配置：
+
+1. 在 Hook 脚本中检测项目路径：
+   ```python
+   workspace_roots = self.input_data.get("workspace_roots", [])
+   if "/path/to/special/project" in workspace_roots:
+       # 特殊处理
+   ```
+
+2. 使用环境变量：
+   ```bash
+   export ORTENSIA_SERVER="ws://special-server:8765"
+   cursor /path/to/special/project
+   ```
+
+### 自定义 Hook
+
+参考 [README.md 的开发指南](README.md#开发指南)。
+
+## 相关文档
+
+- [README.md](README.md) - 完整文档
+- [QUICKSTART.md](QUICKSTART.md) - 快速开始
+- [Cursor Agent Hooks 官方文档](https://cursor.com/en-US/docs/agent/hooks)
+
+## 技术支持
+
+如有问题，请在项目中提交 Issue。

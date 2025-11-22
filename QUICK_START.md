@@ -1,270 +1,237 @@
-# 🚀 Ortensia 快速入门
+# Sakura 快速开始
 
-**版本**: V9  
-**5 分钟快速上手**
+> 🎉 **项目已清理完成！只保留核心认知库**
+
+## 📦 核心结构
+
+✅ **纯粹的核心认知库！**
+
+```
+matou_sakura/                   # 核心包
+├── __init__.py                 # ✅ 公共 API
+├── pyproject.toml              # ✅ 打包配置
+├── persona/                    # ✅ 核心认知模块 (19 个文件)
+├── config/                     # ✅ 配置文件
+└── utils/                      # ✅ 工具模块
+
+examples/                       # 使用示例
+├── minimal_example.py          # ✅ 运行成功！
+└── basic_usage.py
+
+文档:
+├── QUICK_START.md              # 本文档
+├── SAKURA_PACKAGING_GUIDE.md   # 打包指南
+├── SAKURA_REFACTOR_ROADMAP.md  # 重构路线图
+└── CLEANUP_SUMMARY.md          # 清理总结
+```
 
 ---
 
-## 📋 前置要求
+## 🚀 快速使用
 
-- Python 3.13+
-- Cursor IDE
-- macOS (主要测试平台)
+### 1. 导入测试（无需安装）
+
+```bash
+cd "/Users/user/Documents/ cursorgirl"
+PYTHONPATH="$PWD:$PYTHONPATH" python3 -c "from matou_sakura import ConceptGraph, RuntimeState; print('✅ 导入成功!')"
+```
+
+**输出**: `✅ 导入成功!`
+
+### 2. 运行示例
+
+```bash
+cd "/Users/user/Documents/ cursorgirl"
+PYTHONPATH="$PWD:$PYTHONPATH" python3 examples/minimal_example.py
+```
+
+### 3. 在第三方项目中使用
+
+```python
+# 方式 1: 添加到 PYTHONPATH（开发模式）
+import sys
+sys.path.insert(0, '/Users/user/Documents/ cursorgirl')
+
+from matou_sakura import ConceptGraph, RuntimeState, ConceptDefinition, ConceptType
+
+# 创建概念图谱
+graph = ConceptGraph()
+
+# 注册概念
+concept = ConceptDefinition(
+    name="test_concept",
+    type=ConceptType.FLOAT,
+    description="测试概念",
+    properties={"baseline": 0.5},
+    constraints={"range": {"min": 0.0, "max": 1.0}}
+)
+graph.register_concept(concept)
+
+# 创建运行时状态
+state = RuntimeState(graph)
+
+# 使用
+state.set_concept_value("test_concept", 0.8)
+value = state.get_concept_value("test_concept")
+print(f"值: {value}")  # 输出: 值: 0.8
+```
 
 ---
 
-## 🎯 三步启动
+## 📚 核心 API
 
-### 1️⃣ 安装 Cursor Hook
+### ConceptGraph
 
-```bash
-cd cursor-injector
-./install-v9.sh
+概念图谱，管理概念定义和关系。
+
+```python
+from matou_sakura import ConceptGraph, ConceptDefinition, ConceptType
+
+graph = ConceptGraph()
+concept = ConceptDefinition(
+    name="my_concept",
+    type=ConceptType.FLOAT,
+    description="我的概念",
+)
+graph.register_concept(concept)
 ```
 
-这会将 WebSocket 客户端注入到 Cursor 中。
+### RuntimeState
 
-### 2️⃣ 启动中央服务器
+运行时状态，存储概念实例值。
 
-```bash
-# 方法 1: 一键启动（推荐）
-./scripts/START_ALL.sh
+```python
+from matou_sakura import RuntimeState
 
-# 方法 2: 手动启动
-cd bridge
-python3 websocket_server.py
+state = RuntimeState(graph)
+state.set_concept_value("my_concept", 0.5)
+value = state.get_concept_value("my_concept")
 ```
 
-服务器会监听端口 8765。
+### ConceptOperator
 
-### 3️⃣ 启动 Cursor 并测试
+自定义处理器基类。
 
-启动 Cursor IDE，然后运行测试：
+```python
+from matou_sakura import ConceptOperator, RuntimeState
 
-```bash
-cd tests
-python3 quick_test_central.py
+class MyProcessor(ConceptOperator):
+    def execute(self, runtime_state: RuntimeState):
+        # 读取
+        input_val = runtime_state.get_concept_value("input")
+        # 处理
+        result = input_val * 2
+        # 写入
+        runtime_state.set_concept_value("output", result)
+
+# 使用
+processor = MyProcessor()
+state.set_concept_value("input", 5)
+processor.execute(state)
+print(state.get_concept_value("output"))  # 输出: 10
 ```
-
-✅ **成功！** 你会看到 Cursor Composer 收到命令并开始执行。
 
 ---
 
-## 📝 发送你的第一个命令
+## 🔄 典型使用模式
 
-### Python 客户端示例
+### 模式 1: 简单的状态管理
+
+```python
+from matou_sakura import ConceptGraph, RuntimeState, ConceptDefinition, ConceptType
+
+# 初始化
+graph = ConceptGraph()
+graph.register_concept(ConceptDefinition(
+    name="score", type=ConceptType.FLOAT, description="分数"
+))
+state = RuntimeState(graph)
+
+# 使用
+state.set_concept_value("score", 85.5)
+score = state.get_concept_value("score")
+```
+
+### 模式 2: 处理循环
 
 ```python
 import asyncio
-import websockets
-import json
-import time
 
-async def send_command():
-    async with websockets.connect('ws://localhost:8765') as ws:
-        # 1. 注册
-        await ws.send(json.dumps({
-            "type": "register",
-            "from": "my-client",
-            "to": "server",
-            "timestamp": int(time.time()),
-            "payload": {"client_type": "command_client"}
-        }))
+async def main():
+    # 创建状态
+    graph = ConceptGraph()
+    state = RuntimeState(graph)
+    
+    # 创建处理器
+    processors = [
+        InputProcessor(),
+        LogicProcessor(),
+        OutputProcessor(),
+    ]
+    
+    # 主循环
+    while True:
+        for p in processors:
+            p.execute(state)
+        await asyncio.sleep(0.1)
+
+asyncio.run(main())
+```
+
+### 模式 3: 集成到现有项目
+
+```python
+class MyAgent:
+    def __init__(self):
+        self.graph = ConceptGraph()
+        self.state = RuntimeState(self.graph)
+        # 注册你的概念...
+    
+    def process(self, input_data):
+        # 写入输入概念
+        self.state.set_concept_value("input", input_data)
         
-        await ws.recv()  # 等待确认
+        # 执行处理器
+        for processor in self.processors:
+            processor.execute(self.state)
         
-        # 2. 发送命令 (需要知道 Cursor ID)
-        cursor_id = "cursor-xxxxx"  # 从日志获取
-        
-        await ws.send(json.dumps({
-            "type": "composer_send_prompt",
-            "from": "my-client",
-            "to": cursor_id,
-            "timestamp": int(time.time()),
-            "payload": {
-                "agent_id": "test",
-                "prompt": "写一个 Python 快速排序"
-            }
-        }))
-        
-        # 3. 接收结果
-        result = await ws.recv()
-        print(result)
-
-asyncio.run(send_command())
+        # 读取输出概念
+        return self.state.get_concept_value("output")
 ```
 
 ---
 
-## 🔍 如何获取 Cursor ID
+## 📖 完整文档
 
-### 方法 1: 查看服务器日志
+- [打包与使用指南](SAKURA_PACKAGING_GUIDE.md) - 完整的打包和使用文档
+- [架构设计](FINAL_ARCHITECTURE_V2.md) - 整体架构说明
+- [重构路线图](SAKURA_REFACTOR_ROADMAP.md) - 内部优化计划（可选）
+- [概念编译器](CONCEPT_COMPILER_DESIGN.md) - 长期优化方案（可选）
 
-```bash
-tail -f /tmp/ws_server.log | grep "已注册"
+---
+
+## ✅ 当前状态
+
 ```
+打包配置:         ✅ 完成
+核心 API:         ✅ 可用
+导入测试:         ✅ 通过
+示例程序:         ✅ 运行成功
+文档:             ✅ 完整
 
-你会看到类似：
-```
-✅ 客户端已注册: cursor-4rod28v0h (cursor_hook)
-```
-
-### 方法 2: 使用测试脚本
-
-测试脚本会自动发现 Cursor ID：
-
-```bash
-cd tests
-python3 quick_test_central.py
+可以开始在第三方项目中使用！
 ```
 
 ---
 
-## 📊 查看日志
+## 🎯 使用建议
 
-### Cursor Hook 日志
-
-```bash
-tail -f /tmp/cursor_ortensia.log
-```
-
-### 服务器日志
-
-```bash
-tail -f /tmp/ws_server.log
-```
+1. **开发阶段**: 使用 PYTHONPATH 直接引用
+2. **测试阶段**: 在虚拟环境中安装测试
+3. **生产阶段**: 考虑发布到私有 PyPI 或 Git 仓库
 
 ---
 
-## 🛑 停止服务
-
-```bash
-./scripts/STOP_ALL.sh
-```
-
----
-
-## 🐛 故障排除
-
-### 问题 1: Hook 未连接
-
-**症状**: 测试脚本找不到 Cursor 客户端
-
-**解决**:
-```bash
-# 1. 检查 Hook 日志
-tail -30 /tmp/cursor_ortensia.log
-
-# 2. 重新注入
-cd cursor-injector
-./uninstall.sh
-./install-v9.sh
-
-# 3. 重启 Cursor
-```
-
-### 问题 2: 端口被占用
-
-**症状**: 服务器启动失败，提示端口 8765 已被占用
-
-**解决**:
-```bash
-# 停止现有服务
-./scripts/STOP_ALL.sh
-
-# 或手动查找并杀死进程
-lsof -i :8765
-kill -9 <PID>
-```
-
-### 问题 3: 命令无响应
-
-**症状**: 发送命令后没有反应
-
-**检查**:
-```bash
-# 1. 确认服务器运行
-lsof -i :8765
-
-# 2. 确认 Cursor Hook 已连接
-grep "已连接" /tmp/cursor_ortensia.log
-
-# 3. 确认 Cursor ID 正确
-tail -f /tmp/ws_server.log
-```
-
----
-
-## 📚 下一步
-
-### 查看文档
-- [README.md](./README.md) - 项目主页和详细说明
-- [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) - 完整功能清单
-- [docs/WEBSOCKET_PROTOCOL.md](./docs/WEBSOCKET_PROTOCOL.md) - 协议规范
-
-### 查看示例
-```bash
-cd examples
-cat command_client_example.py
-cat semantic_command_client.py
-```
-
-### 开发自己的客户端
-参考 `examples/` 目录中的示例代码，使用 Ortensia Protocol 与 Cursor 通信。
-
----
-
-## 🎯 常用命令速查
-
-```bash
-# 安装
-cd cursor-injector && ./install-v9.sh
-
-# 启动服务器
-./scripts/START_ALL.sh
-
-# 测试
-cd tests && python3 quick_test_central.py
-
-# 查看日志
-tail -f /tmp/cursor_ortensia.log    # Cursor
-tail -f /tmp/ws_server.log           # 服务器
-
-# 停止
-./scripts/STOP_ALL.sh
-
-# 重新安装
-cd cursor-injector && ./uninstall.sh && ./install-v9.sh
-```
-
----
-
-## 💡 提示
-
-1. **首次使用**: 确保先运行 `install-v9.sh` 安装 Hook
-2. **每次使用**: 先启动服务器，再启动 Cursor
-3. **开发调试**: 保持日志窗口打开以便实时查看
-4. **出现问题**: 先查看日志，再重启服务
-
----
-
-## ✅ 验证安装
-
-运行以下命令确保一切正常：
-
-```bash
-# 1. 检查文件
-ls cursor-injector/install-v9.sh
-ls bridge/websocket_server.py
-ls tests/quick_test_central.py
-
-# 2. 检查权限
-ls -l scripts/*.sh
-
-# 3. 检查 Python 依赖
-python3 -c "import websockets; print('✅ websockets 已安装')"
-```
-
----
-
-**准备就绪！开始使用 Ortensia 控制 Cursor！** 🎉
+**最后更新**: 2025-11-22  
+**版本**: 0.1.0  
+**状态**: ✅ 可用

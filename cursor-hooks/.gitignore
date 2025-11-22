@@ -1,0 +1,5 @@
+# 不需要跟踪的临时文件
+*.pyc
+__pycache__/
+*.log
+.DS_Store

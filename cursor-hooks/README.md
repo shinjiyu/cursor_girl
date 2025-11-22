@@ -1,165 +1,271 @@
-# Cursor Hooks 测试模块
+# Cursor Agent Hooks - 全局安装工具
 
-## 📚 关于 Cursor Hooks
+## 🤖 什么是 Agent Hooks？
 
-根据 [Cursor Hooks 文档](https://cursor.com/en-US/docs/agent/hooks)，Cursor 支持通过 hooks 在特定事件发生时执行自定义脚本。
+Agent Hooks 允许你监控和控制 **Cursor AI Agent** 的行为，在 Agent 执行各种操作时自动触发自定义脚本。
 
-## 🎯 支持的事件类型
+### ✨ 与 Ortensia 集成
 
-根据官方文档和测试，Cursor 支持以下 Hook 事件：
+所有 Agent Hooks 事件都会自动发送到 **Ortensia 中央服务器**，触发虚拟角色（オルテンシア）的实时反馈：
+- 🎤 **语音反馈** - AI 说话告诉你发生了什么
+- 🎭 **表情动作** - 根据情绪显示表情和动作
+- 📊 **详细日志** - 完整的执行日志记录
 
-### 文件操作 Hooks
-- **`post-save`** - 文件保存后触发
-- **`pre-save`** - 文件保存前触发
-- **`post-create`** - 文件创建后触发
-- **`post-delete`** - 文件删除后触发
+## 📋 支持的 Agent Hooks（9个）
 
-### Git 操作 Hooks
-- **`pre-commit`** - Git commit 前触发
-- **`post-commit`** - Git commit 后触发
-- **`pre-push`** - Git push 前触发
-- **`post-push`** - Git push 后触发
+| Hook名称 | 类型 | 触发时机 | 功能 |
+|---------|------|---------|------|
+| `beforeShellExecution` | 权限 | Agent 执行命令前 | 安全检查，拦截危险命令 |
+| `afterShellExecution` | 审计 | Agent 执行命令后 | 审计命令执行结果 |
+| `beforeMCPExecution` | 权限 | Agent 调用工具前 | 检查敏感工具 |
+| `afterMCPExecution` | 审计 | Agent 调用工具后 | 审计工具执行结果 |
+| `afterFileEdit` | 审计 | Agent 编辑文件后 | 自动格式化，审计修改 |
+| `beforeReadFile` | 权限 | Agent 读取文件前 | 敏感文件保护 |
+| `beforeSubmitPrompt` | 审计 | Agent 提交提示前 | 检测敏感信息 |
+| `afterAgentResponse` | 审计 | Agent 响应后 | 审计 Agent 响应 |
+| `stop` | 控制 | Agent 任务完成 | 任务完成通知 |
 
-### 编辑器事件 Hooks
-- **`on-focus`** - 编辑器获得焦点时
-- **`on-blur`** - 编辑器失去焦点时
-- **`on-open`** - 打开文件时
-- **`on-close`** - 关闭文件时
+## 🚀 快速开始
 
-### 构建和测试 Hooks
-- **`pre-build`** - 构建前触发
-- **`post-build`** - 构建后触发
-- **`pre-test`** - 测试前触发
-- **`post-test`** - 测试后触发
+### 前提条件
 
-### AI 操作 Hooks
-- **`on-ai-start`** - AI 开始生成时
-- **`on-ai-complete`** - AI 完成生成时
-- **`on-ai-accept`** - 接受 AI 建议时
-- **`on-ai-reject`** - 拒绝 AI 建议时
+1. **启动 Ortensia 中央服务器**（必须）：
+   ```bash
+   cd <your-cursorgirl-project>
+   ./scripts/START_ALL.sh
+   ```
+   
+2. **确认服务器运行**：
+   ```bash
+   lsof -i :8765  # 应该看到 python3 进程监听 8765 端口
+   ```
 
-## 📁 项目结构
+### 一键安装
+
+```bash
+cd /path/to/cursorgirl/cursor-hooks
+./deploy.sh
+```
+
+脚本会自动：
+1. ✅ 复制所有 Agent Hooks 到 `~/.cursor-agent/`
+2. ✅ 设置正确的执行权限
+3. ✅ 创建 `hooks.json` 配置文件
+4. ✅ 在 `~/.cursor/` 创建符号链接
+5. ✅ 复制必要的库文件
+
+### 重启 Cursor
+
+**完全退出** Cursor（Cmd+Q），然后重新打开。
+
+## 📊 验证安装
+
+### 1. 检查文件部署
+
+```bash
+ls -la ~/.cursor-agent/
+ls -la ~/.cursor/hooks.json
+```
+
+应该看到：
+```
+~/.cursor-agent/
+├── hooks/          # 9 个 Agent Hook 脚本
+├── lib/            # 支持库
+├── hooks.json      # 配置文件
+└── run_hook.sh     # 包装脚本
+```
+
+### 2. 查看日志
+
+```bash
+tail -f /tmp/cursor-agent-hooks.log
+```
+
+### 3. 测试 Hook
+
+```bash
+echo '{"command":"ls -la"}' | python3 ~/.cursor-agent/hooks/beforeShellExecution.py
+```
+
+应该看到日志输出，并且 Ortensia 会说话（如果中央服务器运行中）。
+
+### 4. 触发真实 Agent 事件
+
+在 Cursor 中：
+1. 打开任意项目
+2. 按 `Cmd+K` 打开 AI Composer
+3. 输入提示，如："创建一个 hello.py 文件"
+4. 观察：
+   - Cursor Agent 开始工作
+   - Agent Hooks 被触发
+   - `/tmp/cursor-agent-hooks.log` 有新日志
+   - Ortensia 说话和做动作
+
+## 🔧 配置
+
+### 修改中央服务器地址
+
+如果你的 Ortensia 服务器不在 `localhost:8765`：
+
+编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
+
+```python
+# 找到这一行
+self.ws_server = "ws://localhost:8765"
+
+# 修改为你的服务器地址
+self.ws_server = "ws://192.168.1.100:8765"
+```
+
+然后重启 Cursor。
+
+### 自定义 Hook 行为
+
+编辑 `~/.cursor-agent/hooks/<hook_name>.py` 来自定义 Hook 行为。
+
+例如，修改 `stop.py` 来改变任务完成时的消息：
+
+```python
+# 修改文本和情绪
+await self.send_to_ortensia(
+    text="太棒了！任务圆满完成！🎉",
+    emotion="excited",
+    event_type="stop"
+)
+```
+
+## 🗑️ 卸载
+
+```bash
+rm -rf ~/.cursor-agent/
+rm ~/.cursor/hooks.json
+```
+
+然后重启 Cursor。
+
+## 📁 目录结构
 
 ```
 cursor-hooks/
-├── .cursor/
-│   └── hooks/
-│       ├── post-save           # 文件保存 hook
-│       ├── post-commit         # Git commit hook
-│       ├── post-test           # 测试 hook
-│       └── on-ai-complete      # AI 完成 hook
-├── test/
-│   ├── test_post_save.sh       # 测试文件保存
-│   ├── test_post_commit.sh     # 测试 Git commit
-│   └── test_all.sh             # 运行所有测试
-├── lib/
-│   ├── hook_utils.sh           # Hook 工具函数
-│   └── websocket_sender.py     # WebSocket 消息发送器
-└── README.md
+├── deploy.sh           # 部署脚本
+├── hooks/              # Agent Hook 脚本（9个）
+│   ├── afterAgentResponse.py
+│   ├── afterFileEdit.py
+│   ├── afterMCPExecution.py
+│   ├── afterShellExecution.py
+│   ├── beforeMCPExecution.py
+│   ├── beforeReadFile.py
+│   ├── beforeShellExecution.py
+│   ├── beforeSubmitPrompt.py
+│   └── stop.py
+├── lib/                # 支持库
+│   ├── agent_hook_handler.py  # Hook 处理器基类
+│   └── websocket_sender.sh    # WebSocket 发送工具
+├── hooks.json          # Cursor 配置文件
+├── run_hook.sh         # Hook 包装脚本
+├── requirements.txt    # Python 依赖
+└── README.md           # 本文件
 ```
 
-## 🚀 使用方法
+## 🐛 故障排查
 
-### 1. 部署 Hooks 到项目
+### Agent Hooks 没有触发
 
-#### 方法 A: 使用部署脚本（推荐）
+1. **检查 Cursor 版本**：
+   - Agent Hooks 需要 Cursor >= 0.42.0
+   - 检查：Cursor -> About Cursor
+
+2. **检查配置文件**：
+   ```bash
+   cat ~/.cursor/hooks.json
+   ```
+   应该存在且是符号链接到 `~/.cursor-agent/hooks.json`
+
+3. **检查日志**：
+   ```bash
+   tail -f /tmp/cursor-agent-hooks.log
+   ```
+
+### Ortensia 没有说话
+
+1. **检查中央服务器**：
+   ```bash
+   lsof -i :8765  # 应该有进程监听
+   tail -f /tmp/ws_server.log  # 查看服务器日志
+   ```
+
+2. **检查服务器地址**：
+   ```bash
+   grep "ws_server" ~/.cursor-agent/lib/agent_hook_handler.py
+   ```
+   应该是 `ws://localhost:8765`
+
+3. **手动测试连接**：
+   ```bash
+   cd /path/to/cursorgirl
+   python3 tests/test_aituber_integration.py
+   ```
+
+### 权限问题
+
+如果 Hook 脚本无法执行：
 
 ```bash
-# 部署到当前オルテンシア项目
-cd cursor-hooks
-./deploy.sh ..
-
-# 部署到其他项目
-cd cursor-hooks
-./deploy.sh /path/to/your/project
+chmod +x ~/.cursor-agent/hooks/*.py
+chmod +x ~/.cursor-agent/lib/*.py
+chmod +x ~/.cursor-agent/run_hook.sh
 ```
 
-#### 方法 B: 手动复制
+## 🔗 相关文档
 
-```bash
-# 复制 hooks 到项目根目录
-cp -r cursor-hooks/.cursor /path/to/your/project/
+- [Cursor Agent Hooks 官方文档](https://cursor.com/en-US/docs/agent/hooks)
+- [Ortensia 中央服务器](../bridge/README.md)
+- [Ortensia 协议](../bridge/protocol.py)
 
-# 确保 hooks 可执行
-chmod +x /path/to/your/project/.cursor/hooks/*
+## 📝 开发指南
+
+### 创建自定义 Hook
+
+1. 在 `hooks/` 目录创建新的 `.py` 文件
+2. 继承 `AgentHookHandler` 基类
+3. 实现 `handle_hook()` 方法
+4. 在 `hooks.json` 中注册
+
+示例：
+
+```python
+#!/usr/bin/env python3
+from agent_hook_handler import AgentHookHandler
+
+class MyCustomHook(AgentHookHandler):
+    def __init__(self):
+        super().__init__("myCustomHook")
+    
+    async def handle_hook(self):
+        # 你的逻辑
+        await self.send_to_ortensia(
+            text="自定义 Hook 被触发了！",
+            emotion="neutral"
+        )
+        
+        # 返回响应（如果需要）
+        return self.format_response(allow=True)
+
+if __name__ == "__main__":
+    import asyncio
+    hook = MyCustomHook()
+    asyncio.run(hook.run())
 ```
 
-### 2. 卸载 Hooks
+## 📄 许可证
 
-```bash
-# 从项目中移除 hooks
-cd cursor-hooks
-./undeploy.sh /path/to/your/project
-```
+MIT License
 
-### 3. 测试 Hooks
+## 🤝 贡献
 
-```bash
-# 测试单个 hook
-./test/test_post_save.sh
+欢迎提交 Issue 和 Pull Request！
 
-# 运行所有测试
-./test/test_all.sh
-```
+## 📧 联系方式
 
-### 3. 配置 WebSocket
-
-编辑 `.cursor/hooks/config.sh` 配置 WebSocket 服务器地址：
-
-```bash
-WS_SERVER="ws://localhost:8765"
-ORTENSIA_BRIDGE="/path/to/cursorgirl/bridge"
-```
-
-## 📝 Hook 参数
-
-每个 hook 会接收不同的参数：
-
-### post-save
-- `$1` - 文件路径
-- `$2` - 文件类型（扩展名）
-
-### post-commit
-- `$1` - Commit 消息
-- `$2` - Commit hash
-- `$3` - 修改的文件数量
-
-### post-test
-- `$1` - 测试结果（pass/fail）
-- `$2` - 通过的测试数量
-- `$3` - 失败的测试数量
-
-### on-ai-complete
-- `$1` - AI 生成的代码长度
-- `$2` - 接受/拒绝状态
-
-## 🔗 集成オルテンシア
-
-Hooks 会自动发送事件到オルテンシア的 WebSocket 服务器：
-
-```bash
-文件保存 → post-save hook → WebSocket → オルテンシア反应 ✨
-```
-
-## 🧪 测试策略
-
-1. **独立测试** - 确保每个 hook 能独立工作
-2. **模拟事件** - 使用测试脚本模拟 Cursor 事件
-3. **验证输出** - 检查 WebSocket 消息格式
-4. **集成测试** - 验证オルテンシア的反应
-
-## 📊 开发状态
-
-- [ ] 基础 hook 结构
-- [ ] 文件保存 hook
-- [ ] Git commit hook
-- [ ] 测试 hook
-- [ ] WebSocket 集成
-- [ ] 完整测试套件
-
----
-
-**参考文档**: [Cursor Hooks](https://cursor.com/en-US/docs/agent/hooks)  
-**版本**: 0.1.0  
-**最后更新**: 2025-11-01
-
+如有问题，请在项目中提交 Issue。
