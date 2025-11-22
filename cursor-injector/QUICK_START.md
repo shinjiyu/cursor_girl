@@ -8,6 +8,37 @@
 
 ---
 
+## ⚙️ 配置（可选）
+
+### 修改中央服务器地址
+
+**默认**: `ws://localhost:8765`
+
+如果需要连接到其他服务器，在启动 Cursor **之前**设置环境变量：
+
+```bash
+# 设置服务器地址
+export ORTENSIA_SERVER=ws://192.168.1.100:8765
+
+# 添加到配置文件（永久生效）
+echo 'export ORTENSIA_SERVER=ws://192.168.1.100:8765' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**验证配置**：
+
+```bash
+# 重启 Cursor 后查看日志
+cat /tmp/cursor_ortensia.log | grep "服务器地址"
+```
+
+**常用场景**：
+- 🏠 本地测试: `ws://localhost:8765` (默认)
+- 🌐 局域网: `ws://192.168.1.100:8765`
+- ☁️ 远程服务器: `ws://your-domain.com:8765`
+
+---
+
 ## 🎯 3 步开始
 
 ### 步骤 1: 安装注入器（30 秒）

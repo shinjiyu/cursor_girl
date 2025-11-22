@@ -116,10 +116,15 @@ cat > "$MAIN_JS" << 'INJECT_END'
         // 第二部分：作为 Client 连接到中央Server
         // ====================================================================
         
-        // 🌸 中央服务器地址（hardcoded）
-        const CENTRAL_SERVER_URL = 'ws://localhost:8765';
+        // 🌸 中央服务器地址（支持环境变量配置）
+        const CENTRAL_SERVER_URL = process.env.ORTENSIA_SERVER || 'ws://localhost:8765';
         
-        log(`💡 使用硬编码的中央服务器地址: ${CENTRAL_SERVER_URL}`);
+        if (process.env.ORTENSIA_SERVER) {
+            log(`💡 使用环境变量配置的服务器地址: ${CENTRAL_SERVER_URL}`);
+        } else {
+            log(`💡 使用默认服务器地址: ${CENTRAL_SERVER_URL}`);
+            log('   提示: 可通过环境变量修改: export ORTENSIA_SERVER=ws://your-server:8765');
+        }
         
         log('');
         log('══════════════════════════════════════════════════════════════');

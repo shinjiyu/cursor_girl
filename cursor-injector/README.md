@@ -29,13 +29,55 @@
 
 ```
 cursor-injector/
+├── install-v9.sh              # V9 安装脚本（支持中央服务器）⭐
 ├── install.sh                 # 安装脚本（直接注入到 Cursor main.js）
 ├── uninstall.sh               # 卸载脚本
 ├── ortensia-cursor.sh         # 启动脚本（使用 bridge/venv 环境）
 ├── ortensia_cursor_client.py  # Python 客户端
+├── CONFIG.md                  # 配置指南（修改服务器地址等）⭐
 ├── README.md                  # 本文档
 └── QUICK_START.md             # 快速开始指南
 ```
+
+---
+
+## ⚙️ 配置
+
+### 修改中央服务器地址
+
+默认情况下，Cursor Hook 会连接到 `ws://localhost:8765`。
+
+**修改方法：**
+
+在启动 Cursor **之前**设置环境变量：
+
+```bash
+# 方法 1: 临时设置（仅当前终端会话）
+export ORTENSIA_SERVER=ws://192.168.1.100:8765
+
+# 方法 2: 永久设置（添加到 ~/.zshrc 或 ~/.bashrc）
+echo 'export ORTENSIA_SERVER=ws://192.168.1.100:8765' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**然后重启 Cursor 使配置生效。**
+
+查看日志确认使用的服务器地址：
+
+```bash
+cat /tmp/cursor_ortensia.log | grep "服务器地址"
+```
+
+应该看到：
+```
+💡 使用环境变量配置的服务器地址: ws://192.168.1.100:8765
+```
+
+**常用配置场景：**
+
+- 本地开发（默认）: `ws://localhost:8765`
+- 局域网服务器: `ws://192.168.1.100:8765`
+- 远程服务器: `ws://your-domain.com:8765`
 
 ---
 
