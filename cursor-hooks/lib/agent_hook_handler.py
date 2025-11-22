@@ -103,15 +103,24 @@ class AgentHookHandler:
         try:
             import websockets
             
-            # 生成稳定的客户端 ID（基于 workspace + conversation_id）
-            # 这样同一个 Cursor 会话的所有 hook 都使用相同 ID
+            # 生成稳定的客户端 ID
+            # ID 策略：基于 workspace 生成短 ID，conversation 作为后缀
+            # 格式：agent-hook-{workspace_hash[:4]}-{conversation_hash[:4]}
+            # 这样：
+            #   - 可以通过 workspace_hash 与 inject 关联
+            #   - conversation_hash 区分不同会话
+            #   - 保持 ID 简短易读
             workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
             conversation_id = self.input_data.get('conversation_id', 'default')
             
-            # 使用哈希生成简短唯一 ID
-            id_source = f"{workspace}:{conversation_id}"
-            id_hash = hashlib.md5(id_source.encode()).hexdigest()[:8]
-            client_id = f"agent-hook-{id_hash}"
+            # 计算哈希
+            workspace_hash = hashlib.md5(workspace.encode()).hexdigest()[:4]
+            conversation_hash = hashlib.md5(conversation_id.encode()).hexdigest()[:4]
+            client_id = f"agent-hook-{workspace_hash}-{conversation_hash}"
+            
+            # 计算对应的 Cursor Hook ID（用于关联）
+            # Inject 使用 cursor-{pid}，但我们可以推测基于 workspace 的 ID
+            related_cursor_id = f"cursor-{workspace_hash}"
             
             # 提取 workspace 名称（用于日志）
             workspace_name = Path(workspace).name if workspace != 'unknown' else 'unknown'
@@ -120,6 +129,7 @@ class AgentHookHandler:
             logger.info("💬 准备发送消息到オルテンシア:")
             logger.info(f"   • Workspace: {workspace_name}")
             logger.info(f"   • 客户端ID: {client_id}")
+            logger.info(f"   • 关联Cursor: {related_cursor_id}")
             logger.info(f"   • 文本: {text}")
             logger.info(f"   • 情绪: {emotion}")
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
@@ -166,7 +176,9 @@ class AgentHookHandler:
                                 # 添加 Cursor 会话信息，便于区分多个 Cursor 实例
                                 "workspace": workspace,
                                 "workspace_name": workspace_name,
-                                "conversation_id": conversation_id
+                                "conversation_id": conversation_id,
+                                # 添加关联的 Cursor Hook ID（用于服务器端关联）
+                                "related_cursor_id": related_cursor_id
                             }
                         }
                         

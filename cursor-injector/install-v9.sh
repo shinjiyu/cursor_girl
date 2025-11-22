@@ -142,7 +142,9 @@ cat > "$MAIN_JS" << 'INJECT_END'
         
         // 生成 Cursor ID
         function generateCursorId() {
-            return `cursor-${Math.random().toString(36).substr(2, 9)}`;
+            // 使用 PID 生成稳定的 ID
+            // 这样同一个 Cursor 进程总是使用相同的 ID
+            return `cursor-${process.pid}`;
         }
         
         // 获取工作区路径
