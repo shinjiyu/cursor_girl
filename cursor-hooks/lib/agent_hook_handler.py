@@ -9,6 +9,7 @@ import json
 import logging
 import asyncio
 import time
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -101,13 +102,24 @@ class AgentHookHandler:
         """发送消息到オルテンシア（使用 Ortensia 协议）"""
         try:
             import websockets
-            import uuid
             
-            # 生成客户端 ID
-            client_id = f"agent-hook-{uuid.uuid4().hex[:8]}"
+            # 生成稳定的客户端 ID（基于 workspace + conversation_id）
+            # 这样同一个 Cursor 会话的所有 hook 都使用相同 ID
+            workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
+            conversation_id = self.input_data.get('conversation_id', 'default')
+            
+            # 使用哈希生成简短唯一 ID
+            id_source = f"{workspace}:{conversation_id}"
+            id_hash = hashlib.md5(id_source.encode()).hexdigest()[:8]
+            client_id = f"agent-hook-{id_hash}"
+            
+            # 提取 workspace 名称（用于日志）
+            workspace_name = Path(workspace).name if workspace != 'unknown' else 'unknown'
             
             # 详细日志
             logger.info("💬 准备发送消息到オルテンシア:")
+            logger.info(f"   • Workspace: {workspace_name}")
+            logger.info(f"   • 客户端ID: {client_id}")
             logger.info(f"   • 文本: {text}")
             logger.info(f"   • 情绪: {emotion}")
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
@@ -150,7 +162,11 @@ class AgentHookHandler:
                                 "emotion": emotion,
                                 "source": "agent_hook",
                                 "hook_name": self.hook_name,
-                                "event_type": event_type or self.hook_name
+                                "event_type": event_type or self.hook_name,
+                                # 添加 Cursor 会话信息，便于区分多个 Cursor 实例
+                                "workspace": workspace,
+                                "workspace_name": workspace_name,
+                                "conversation_id": conversation_id
                             }
                         }
                         
