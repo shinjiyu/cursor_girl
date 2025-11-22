@@ -115,23 +115,27 @@ class AgentHookHandler:
             # 使用 asyncio.run 来运行异步代码
             async def send_message():
                 async with websockets.connect(self.ws_server) as websocket:
-                    # 1. 发送注册消息
+                    # 1. 发送注册消息（符合 Ortensia 协议格式）
                     register_msg = {
                         "type": "register",
+                        "from": client_id,
+                        "to": None,
                         "payload": {
-                            "client_id": client_id,
                             "client_type": "agent_hook"
                         }
                     }
                     await websocket.send(json.dumps(register_msg))
+                    logger.debug(f"已发送注册消息: {json.dumps(register_msg)}")
                     
                     # 接收注册确认
                     response = await websocket.recv()
                     logger.debug(f"注册响应: {response}")
                     
-                    # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型）
+                    # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型，符合 Ortensia 协议）
                     message_data = {
                         "type": "aituber_receive_text",
+                        "from": client_id,
+                        "to": "aituber",  # 发送给 AITuber 客户端
                         "payload": {
                             "text": text,
                             "emotion": emotion,
