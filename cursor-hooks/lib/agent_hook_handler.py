@@ -8,6 +8,7 @@ import sys
 import json
 import logging
 import asyncio
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -112,46 +113,53 @@ class AgentHookHandler:
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
             logger.info(f"   • WebSocket: {self.ws_server}")
             
-            # 使用 asyncio.run 来运行异步代码
+            # 使用 asyncio.run 来运行异步代码，带超时机制
             async def send_message():
-                async with websockets.connect(self.ws_server) as websocket:
-                    # 1. 发送注册消息（符合 Ortensia 协议格式）
-                    register_msg = {
-                        "type": "register",
-                        "from": client_id,
-                        "to": None,
-                        "payload": {
-                            "client_type": "agent_hook"
+                # 添加 3 秒连接超时
+                async with asyncio.timeout(3):
+                    async with websockets.connect(
+                        self.ws_server,
+                        open_timeout=2,  # 连接超时 2 秒
+                        close_timeout=1   # 关闭超时 1 秒
+                    ) as websocket:
+                        # 1. 发送注册消息（符合 Ortensia 协议格式）
+                        register_msg = {
+                            "type": "register",
+                            "from": client_id,
+                            "to": None,
+                            "timestamp": int(time.time() * 1000),  # 毫秒时间戳（顶层必须字段）
+                            "payload": {
+                                "client_type": "agent_hook"
+                            }
                         }
-                    }
-                    await websocket.send(json.dumps(register_msg))
-                    logger.debug(f"已发送注册消息: {json.dumps(register_msg)}")
-                    
-                    # 接收注册确认
-                    response = await websocket.recv()
-                    logger.debug(f"注册响应: {response}")
-                    
-                    # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型，符合 Ortensia 协议）
-                    message_data = {
-                        "type": "aituber_receive_text",
-                        "from": client_id,
-                        "to": "aituber",  # 发送给 AITuber 客户端
-                        "payload": {
-                            "text": text,
-                            "emotion": emotion,
-                            "source": "agent_hook",
-                            "hook_name": self.hook_name,
-                            "event_type": event_type or self.hook_name,
-                            "timestamp": datetime.now().isoformat()
+                        await websocket.send(json.dumps(register_msg))
+                        logger.debug(f"已发送注册消息: {json.dumps(register_msg)}")
+                        
+                        # 接收注册确认（1秒超时）
+                        response = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                        logger.debug(f"注册响应: {response}")
+                        
+                        # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型，符合 Ortensia 协议）
+                        message_data = {
+                            "type": "aituber_receive_text",
+                            "from": client_id,
+                            "to": "aituber",  # 发送给 AITuber 客户端
+                            "timestamp": int(time.time() * 1000),  # 毫秒时间戳（顶层必须字段）
+                            "payload": {
+                                "text": text,
+                                "emotion": emotion,
+                                "source": "agent_hook",
+                                "hook_name": self.hook_name,
+                                "event_type": event_type or self.hook_name
+                            }
                         }
-                    }
-                    
-                    # 添加输入数据的摘要（避免发送过多数据）
-                    if self.input_data:
-                        message_data["payload"]["event_summary"] = self._summarize_input()
-                    
-                    await websocket.send(json.dumps(message_data))
-                    logger.info(f"✅ 消息已发送到オルテンシア")
+                        
+                        # 添加输入数据的摘要（避免发送过多数据）
+                        if self.input_data:
+                            message_data["payload"]["event_summary"] = self._summarize_input()
+                        
+                        await websocket.send(json.dumps(message_data))
+                        logger.info(f"✅ 消息已发送到オルテンシア")
             
             asyncio.run(send_message())
             
