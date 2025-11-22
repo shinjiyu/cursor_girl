@@ -1,0 +1,8 @@
+# Cursor Hooks 依赖
+
+# WebSocket 客户端库
+websockets>=12.0
+
+# 注意：不需要其他依赖！
+# cursor-hooks 现在是完全独立的模块
+
