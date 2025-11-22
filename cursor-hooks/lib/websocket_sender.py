@@ -1,64 +1,85 @@
 #!/usr/bin/env python3
 """
 WebSocket 消息发送器 - 用于 Cursor Hooks
-从命令行接收事件数据，发送到オルテンシア的 WebSocket 服务器
+从命令行接收事件数据，发送到 Ortensia 中央服务器
+
+完全独立的实现，不依赖其他模块
 """
 
 import asyncio
 import json
 import sys
 import argparse
+import os
 from pathlib import Path
-
-# 添加 bridge 路径以导入 websocket_client
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "bridge"))
+from datetime import datetime
 
 try:
-    from websocket_client import WebSocketClient
+    import websockets
 except ImportError:
-    print("❌ 无法导入 WebSocketClient，请确保 bridge/websocket_client.py 存在", file=sys.stderr)
+    print("❌ 缺少 websockets 库，请安装: pip install websockets", file=sys.stderr)
     sys.exit(1)
 
 
-async def send_hook_event(event_type: str, event_data: dict):
+async def send_hook_event(event_type: str, event_data: dict, server_url: str = None):
     """
-    发送 Hook 事件到 WebSocket 服务器
+    发送 Hook 事件到 Ortensia 中央服务器
+    
+    使用 Ortensia 协议格式直接发送消息
     
     Args:
         event_type: 事件类型（如 'file_save', 'git_commit'）
         event_data: 事件数据字典
+        server_url: WebSocket 服务器地址（默认从环境变量或配置读取）
     """
-    client = WebSocketClient()
+    # 获取服务器地址
+    if server_url is None:
+        server_url = os.environ.get('WS_SERVER', 'ws://localhost:8765')
     
     try:
         # 连接到服务器
-        await client.connect()
+        async with websockets.connect(server_url) as websocket:
+            # 生成客户端 ID
+            client_id = f"cursor-hook-{os.getpid()}"
+            
+            # 根据事件类型确定消息内容和情绪
+            text, emotion = get_message_for_event(event_type, event_data)
+            
+            # 构造 Ortensia 协议消息
+            message = {
+                "type": "aituber_receive_text",  # AITuber 接收文本消息
+                "from": client_id,
+                "to": "broadcast",  # 广播给所有客户端
+                "timestamp": int(datetime.now().timestamp()),
+                "payload": {
+                    "text": text,
+                    "role": "assistant",
+                    "emotion": emotion,
+                    "type": "hook_event",
+                    "event_type": event_type,
+                    "event_data": event_data
+                }
+            }
+            
+            # 发送消息
+            await websocket.send(json.dumps(message))
+            print(f"✅ 事件已发送: {event_type} -> {text}")
+            
+            # 等待确认（可选）
+            try:
+                response = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                print(f"📨 服务器响应: {response[:100]}...")
+            except asyncio.TimeoutError:
+                # 没有响应也没关系，消息已发送
+                pass
         
-        # 根据事件类型确定消息内容和情绪
-        text, emotion = get_message_for_event(event_type, event_data)
-        
-        # 使用 send_emotion 方法发送
-        success = await client.send_emotion(
-            text=text,
-            emotion=emotion,
-            role='assistant',
-            event_type=event_type
-        )
-        
-        if success:
-            print(f"✅ 事件已发送: {event_type}")
-        else:
-            print(f"❌ 事件发送失败: {event_type}", file=sys.stderr)
-            sys.exit(1)
-        
-        # 等待一小段时间确保消息发送
-        await asyncio.sleep(0.5)
-        
+    except ConnectionRefusedError:
+        print(f"❌ 无法连接到服务器: {server_url}", file=sys.stderr)
+        print(f"   请确保 Ortensia 中央服务器正在运行", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
         print(f"❌ 发送失败: {e}", file=sys.stderr)
         sys.exit(1)
-    finally:
-        await client.close()
 
 
 def get_message_for_event(event_type: str, event_data: dict) -> tuple[str, str]:
