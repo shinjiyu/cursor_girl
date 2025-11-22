@@ -43,6 +43,28 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
+# 获取绝对路径用于比较
+SOURCE_DIR_ABS="$(cd "$SOURCE_DIR" && pwd)"
+TARGET_DIR_ABS="$(cd "$TARGET_DIR" && pwd)"
+TARGET_CURSOR_DIR_ABS="${TARGET_DIR_ABS}/.cursor"
+
+# 检查是否试图部署到自己（防止删除源文件）
+if [ "$SOURCE_DIR_ABS" = "$TARGET_CURSOR_DIR_ABS" ]; then
+    echo -e "${RED}❌ 错误: 不能部署到自身目录！${NC}"
+    echo ""
+    echo "你试图部署到:"
+    echo "  源目录: ${SOURCE_DIR_ABS}"
+    echo "  目标目录: ${TARGET_CURSOR_DIR_ABS}"
+    echo ""
+    echo "正确的用法:"
+    echo -e "  ${GREEN}cd cursor-hooks${NC}"
+    echo -e "  ${GREEN}./deploy.sh ..${NC}  ${BLUE}# 部署到父目录（オルテンシア项目）${NC}"
+    echo "  或"
+    echo -e "  ${GREEN}./deploy.sh /path/to/other/project${NC}  ${BLUE}# 部署到其他项目${NC}"
+    echo ""
+    exit 1
+fi
+
 # 如果目标 .cursor 目录已存在，询问是否覆盖
 if [ -d "$TARGET_CURSOR_DIR" ]; then
     echo -e "${YELLOW}⚠️  目标目录 .cursor/ 已存在${NC}"
