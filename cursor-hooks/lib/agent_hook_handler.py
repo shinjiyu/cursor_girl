@@ -105,39 +105,31 @@ class AgentHookHandler:
             import websockets
             
             # ============================================================
-            # 获取对应的 inject ID（从环境变量）
+            # 使用 conversation_id 作为 hook 的客户端 ID
             # ============================================================
-            # inject 在启动时设置 ORTENSIA_INJECT_ID 环境变量
-            # hook 从环境变量直接读取，无需通过 workspace 推测
-            inject_id = os.getenv('ORTENSIA_INJECT_ID', '')
+            # V10: 简化方案，直接使用 conversation_id 作为 ID
+            # 服务器通过 conversation_id 关联 inject 和 hook
+            conversation_id = self.input_data.get('conversation_id', 'unknown')
             
-            if not inject_id:
-                logger.warning("⚠️  未找到 ORTENSIA_INJECT_ID 环境变量")
-                logger.warning("   inject 可能未正确设置环境变量")
-                logger.warning("   将使用 workspace hash 作为备用方案")
-            
-            # ============================================================
-            # 生成 hook 的客户端 ID
-            # ============================================================
-            workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
-            conversation_id = self.input_data.get('conversation_id', 'default')
-            
-            # 计算哈希
-            workspace_hash = hashlib.md5(workspace.encode()).hexdigest()[:4]
-            conversation_hash = hashlib.md5(conversation_id.encode()).hexdigest()[:4]
-            client_id = f"hook-{workspace_hash}-{conversation_hash}"
+            # 如果没有 conversation_id，使用 workspace hash 作为备用
+            if conversation_id == 'unknown' or not conversation_id:
+                workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
+                workspace_hash = hashlib.md5(workspace.encode()).hexdigest()[:8]
+                client_id = f"hook-{workspace_hash}"
+                logger.warning(f"⚠️  未找到 conversation_id，使用 workspace hash: {client_id}")
+            else:
+                client_id = f"hook-{conversation_id}"
+                logger.info(f"✅ 使用 conversation_id: {conversation_id}")
             
             # 提取 workspace 名称（用于日志）
+            workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
             workspace_name = Path(workspace).name if workspace != 'unknown' else 'unknown'
             
             # 详细日志
             logger.info("💬 准备发送消息到オルテンシア:")
-            logger.info(f"   • Workspace: {workspace_name}")
             logger.info(f"   • Hook ID: {client_id}")
-            if inject_id:
-                logger.info(f"   • Inject ID: {inject_id} ✅")
-            else:
-                logger.info(f"   • Inject ID: (未找到) ⚠️")
+            logger.info(f"   • Conversation ID: {conversation_id}")
+            logger.info(f"   • Workspace: {workspace_name}")
             logger.info(f"   • 文本: {text}")
             logger.info(f"   • 情绪: {emotion}")
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
@@ -184,9 +176,8 @@ class AgentHookHandler:
                                 # 添加 Cursor 会话信息
                                 "workspace": workspace,
                                 "workspace_name": workspace_name,
-                                "conversation_id": conversation_id,
-                                # ✅ 关键：直接包含 inject ID（从环境变量读取）
-                                "inject_id": inject_id if inject_id else None
+                                "conversation_id": conversation_id
+                                # V10: 不再需要 inject_id，服务器通过 conversation_id 关联
                             }
                         }
                         
