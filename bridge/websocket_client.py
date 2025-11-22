@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 class WebSocketClient:
     """WebSocket 客户端 - 与 AITuber Kit 通信"""
     
-    def __init__(self, uri: str = 'ws://localhost:8000/ws'):
+    def __init__(self, uri: str = 'ws://localhost:8765'):
         """
         初始化 WebSocket 客户端
         
         Args:
-            uri: WebSocket 服务器地址
+            uri: WebSocket 服务器地址（默认连接到 Ortensia 中央服务器）
         """
         self.uri = uri
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
@@ -185,7 +185,7 @@ class WebSocketClient:
 _global_client: Optional[WebSocketClient] = None
 
 
-async def get_client(uri: str = 'ws://localhost:8000/ws') -> WebSocketClient:
+async def get_client(uri: str = 'ws://localhost:8765') -> WebSocketClient:
     """
     获取全局 WebSocket 客户端（单例）
     

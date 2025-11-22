@@ -1,8 +1,8 @@
 #!/bin/bash
 # Cursor Hooks 配置文件
 
-# WebSocket 服务器地址
-WS_SERVER="ws://localhost:8000/ws"
+# WebSocket 服务器地址（Ortensia 中央服务器）
+WS_SERVER="ws://localhost:8765"
 
 # 自动检测 オルテンシア 项目路径
 # 假设 .cursor 在项目根目录

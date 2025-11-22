@@ -393,11 +393,65 @@ cat > "$MAIN_JS" << 'INJECT_END'
             }
         }
         
+        // ====================================================================
+        // 状态事件发送辅助函数
+        // ====================================================================
+        
+        function sendStatusEvent(status, agentId, message) {
+            const event = {
+                type: 'agent_status_changed',
+                from: cursorId,
+                to: 'broadcast',
+                timestamp: Math.floor(Date.now() / 1000),
+                payload: {
+                    agent_id: agentId,
+                    status: status,
+                    message: message
+                }
+            };
+            sendToCentral(event);
+            log(`📊 [状态事件] ${status}: ${message}`);
+        }
+        
+        function sendCompletedEvent(agentId, result, summary) {
+            const event = {
+                type: 'agent_completed',
+                from: cursorId,
+                to: 'broadcast',
+                timestamp: Math.floor(Date.now() / 1000),
+                payload: {
+                    agent_id: agentId,
+                    result: result,
+                    summary: summary
+                }
+            };
+            sendToCentral(event);
+            log(`✅ [完成事件] ${result}: ${summary}`);
+        }
+        
+        function sendErrorEvent(agentId, errorMessage) {
+            const event = {
+                type: 'agent_error',
+                from: cursorId,
+                to: 'broadcast',
+                timestamp: Math.floor(Date.now() / 1000),
+                payload: {
+                    agent_id: agentId,
+                    error: errorMessage
+                }
+            };
+            sendToCentral(event);
+            log(`❌ [错误事件] ${errorMessage}`);
+        }
+        
         // 处理 Composer 发送提示词命令（V9：完整流程）
         async function handleComposerSendPrompt(fromId, payload) {
             const { agent_id, prompt } = payload;
             
             log(`💬 [Composer] 发送提示词: ${prompt.substring(0, 50)}...`);
+            
+            // 发送开始事件
+            sendStatusEvent('working', agent_id, '正在执行提示词...');
             
             try {
                 const electron = await import("electron");
@@ -456,7 +510,10 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 }
                 log('  ✅ 已提交');
                 
-                // 发送成功结果
+                // 发送完成事件
+                sendCompletedEvent(agent_id, 'success', '提示词已成功提交');
+                
+                // 发送成功结果（点对点）
                 const resultMessage = {
                     type: 'composer_send_prompt_result',
                     from: cursorId,
@@ -476,6 +533,10 @@ cat > "$MAIN_JS" << 'INJECT_END'
             } catch (error) {
                 log(`❌ [Composer] 错误: ${error.message}`);
                 
+                // 发送错误事件
+                sendErrorEvent(agent_id, error.message);
+                
+                // 发送错误结果（点对点）
                 const errorMessage = {
                     type: 'composer_send_prompt_result',
                     from: cursorId,
