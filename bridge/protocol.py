@@ -86,6 +86,12 @@ class MessageType(str, Enum):
     AGENT_STATUS_CHANGED = "agent_status_changed"
     AGENT_COMPLETED = "agent_completed"
     AGENT_ERROR = "agent_error"
+    
+    # AITuber 操作
+    AITUBER_SPEAK = "aituber_speak"              # AITuber 说话/显示文本
+    AITUBER_RECEIVE_TEXT = "aituber_receive_text"  # 发送文本给 AITuber
+    AITUBER_EMOTION = "aituber_emotion"          # AITuber 情绪变化
+    AITUBER_STATUS = "aituber_status"            # AITuber 状态更新
 
 
 # ============================================================================

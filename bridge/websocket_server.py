@@ -193,6 +193,19 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         elif msg_type in [MessageType.AGENT_STATUS_CHANGED, MessageType.AGENT_COMPLETED, MessageType.AGENT_ERROR]:
             await broadcast_event(message)
         
+        # AITuber 操作
+        elif msg_type == MessageType.AITUBER_RECEIVE_TEXT:
+            await route_message(message)
+        
+        elif msg_type == MessageType.AITUBER_SPEAK:
+            await route_message(message)
+        
+        elif msg_type == MessageType.AITUBER_EMOTION:
+            await route_message(message)
+        
+        elif msg_type == MessageType.AITUBER_STATUS:
+            await route_message(message)
+        
         else:
             logger.warning(f"⚠️  未知消息类型: {msg_type.value}")
     
