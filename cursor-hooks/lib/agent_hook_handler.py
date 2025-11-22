@@ -97,29 +97,13 @@ class AgentHookHandler:
         emotion: str = "neutral",
         event_type: Optional[str] = None
     ) -> None:
-        """发送消息到オルテンシア"""
+        """发送消息到オルテンシア（使用 Ortensia 协议）"""
         try:
-            # 导入 WebSocket 客户端
-            project_root = Path(__file__).parent.parent.parent
-            sys.path.insert(0, str(project_root / "bridge"))
+            import websockets
+            import uuid
             
-            from websocket_client import WebSocketClient
-            
-            client = WebSocketClient(self.ws_server)
-            
-            # 构建消息
-            message_data = {
-                "text": text,
-                "emotion": emotion,
-                "type": event_type or self.hook_name,
-                "source": "agent_hook",
-                "hook_name": self.hook_name,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # 添加输入数据的摘要（避免发送过多数据）
-            if self.input_data:
-                message_data["event_summary"] = self._summarize_input()
+            # 生成客户端 ID
+            client_id = f"agent-hook-{uuid.uuid4().hex[:8]}"
             
             # 详细日志
             logger.info("💬 准备发送消息到オルテンシア:")
@@ -128,19 +112,48 @@ class AgentHookHandler:
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
             logger.info(f"   • WebSocket: {self.ws_server}")
             
-            # WebSocketClient.send_emotion 是异步的，需要同步调用
-            asyncio.run(client.send_emotion(
-                text=text,
-                emotion=emotion,
-                role='assistant',
-                event_type=event_type or self.hook_name
-            ))
+            # 使用 asyncio.run 来运行异步代码
+            async def send_message():
+                async with websockets.connect(self.ws_server) as websocket:
+                    # 1. 发送注册消息
+                    register_msg = {
+                        "type": "register",
+                        "payload": {
+                            "client_id": client_id,
+                            "client_type": "agent_hook"
+                        }
+                    }
+                    await websocket.send(json.dumps(register_msg))
+                    
+                    # 接收注册确认
+                    response = await websocket.recv()
+                    logger.debug(f"注册响应: {response}")
+                    
+                    # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型）
+                    message_data = {
+                        "type": "aituber_receive_text",
+                        "payload": {
+                            "text": text,
+                            "emotion": emotion,
+                            "source": "agent_hook",
+                            "hook_name": self.hook_name,
+                            "event_type": event_type or self.hook_name,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    }
+                    
+                    # 添加输入数据的摘要（避免发送过多数据）
+                    if self.input_data:
+                        message_data["payload"]["event_summary"] = self._summarize_input()
+                    
+                    await websocket.send(json.dumps(message_data))
+                    logger.info(f"✅ 消息已发送到オルテンシア")
             
-            logger.info(f"✅ 消息已发送到オルテンシア")
+            asyncio.run(send_message())
             
         except Exception as e:
             logger.error(f"❌ 发送到オルテンシア失败: {e}")
-            logger.exception("详细错误信息:")
+            logger.debug(f"详细错误信息: {e}", exc_info=True)
     
     def _summarize_input(self) -> Dict[str, Any]:
         """生成输入数据的摘要（避免发送过大数据）"""
@@ -345,4 +358,3 @@ if __name__ == "__main__":
     else:
         logger.error("Usage: agent_hook_handler.py <hook_name>")
         sys.exit(1)
-
