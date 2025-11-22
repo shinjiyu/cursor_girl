@@ -46,6 +46,11 @@ cat > "$MAIN_JS" << 'INJECT_END'
     log('🎉 Ortensia V9 启动中...');
     log(`进程 ID: ${process.pid}`);
     
+    // 设置环境变量，让 hook 能够找到这个 inject
+    const injectId = `inject-${process.pid}`;
+    process.env.ORTENSIA_INJECT_ID = injectId;
+    log(`📌 设置 inject ID: ${injectId}`);
+    
     // 等待 Electron 初始化
     await new Promise(resolve => setTimeout(resolve, 3000));
     log('⏱️  等待完成，开始初始化...');
@@ -134,17 +139,17 @@ cat > "$MAIN_JS" << 'INJECT_END'
         log('');
         
         let centralWs = null;
-        let cursorId = null;
+        let injectId = null;
         let heartbeatInterval = null;
         let reconnectTimeout = null;
         let reconnectDelay = 1000; // 初始重连延迟 1 秒
         const MAX_RECONNECT_DELAY = 60000; // 最大重连延迟 60 秒
         
         // 生成 Cursor ID
-        function generateCursorId() {
+        function generateInjectId() {
             // 使用 PID 生成稳定的 ID
-            // 这样同一个 Cursor 进程总是使用相同的 ID
-            return `cursor-${process.pid}`;
+            // 这样同一个 Cursor 进程（inject）总是使用相同的 ID
+            return `inject-${process.pid}`;
         }
         
         // 获取工作区路径
@@ -185,12 +190,12 @@ cat > "$MAIN_JS" << 'INJECT_END'
             
             const registerMessage = {
                 type: 'register',
-                from: cursorId,
+                from: injectId,
                 to: 'server',
                 timestamp: Math.floor(Date.now() / 1000),
                 payload: {
                     client_type: 'cursor_hook',
-                    cursor_id: cursorId,
+                    cursor_id: injectId,
                     workspace: workspace,
                     platform: process.platform,
                     pid: process.pid,
@@ -402,7 +407,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
         function sendStatusEvent(status, agentId, message) {
             const event = {
                 type: 'agent_status_changed',
-                from: cursorId,
+                from: injectId,
                 to: 'broadcast',
                 timestamp: Math.floor(Date.now() / 1000),
                 payload: {
@@ -418,7 +423,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
         function sendCompletedEvent(agentId, result, summary) {
             const event = {
                 type: 'agent_completed',
-                from: cursorId,
+                from: injectId,
                 to: 'broadcast',
                 timestamp: Math.floor(Date.now() / 1000),
                 payload: {
@@ -434,7 +439,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
         function sendErrorEvent(agentId, errorMessage) {
             const event = {
                 type: 'agent_error',
-                from: cursorId,
+                from: injectId,
                 to: 'broadcast',
                 timestamp: Math.floor(Date.now() / 1000),
                 payload: {
@@ -518,7 +523,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 // 发送成功结果（点对点）
                 const resultMessage = {
                     type: 'composer_send_prompt_result',
-                    from: cursorId,
+                    from: injectId,
                     to: fromId,
                     timestamp: Math.floor(Date.now() / 1000),
                     payload: {
@@ -541,7 +546,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 // 发送错误结果（点对点）
                 const errorMessage = {
                     type: 'composer_send_prompt_result',
-                    from: cursorId,
+                    from: injectId,
                     to: fromId,
                     timestamp: Math.floor(Date.now() / 1000),
                     payload: {
@@ -605,7 +610,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 
                 const resultMessage = {
                     type: 'composer_status_result',
-                    from: cursorId,
+                    from: injectId,
                     to: fromId,
                     timestamp: Math.floor(Date.now() / 1000),
                     payload: {
@@ -624,7 +629,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 
                 const errorMessage = {
                     type: 'composer_status_result',
-                    from: cursorId,
+                    from: injectId,
                     to: fromId,
                     timestamp: Math.floor(Date.now() / 1000),
                     payload: {
@@ -643,7 +648,7 @@ cat > "$MAIN_JS" << 'INJECT_END'
         function sendHeartbeat() {
             const heartbeatMessage = {
                 type: 'heartbeat',
-                from: cursorId,
+                from: injectId,
                 to: 'server',
                 timestamp: Math.floor(Date.now() / 1000),
                 payload: {}
@@ -657,14 +662,14 @@ cat > "$MAIN_JS" << 'INJECT_END'
             try {
                 log(`🔗 [中央] 尝试连接到 ${CENTRAL_SERVER_URL}...`);
                 
-                cursorId = generateCursorId();
+                injectId = generateInjectId();
                 centralWs = new WebSocketClient(CENTRAL_SERVER_URL);
                 
                 centralWs.on('open', async () => {
                     log('');
                     log('══════════════════════════════════════════════════════════════');
                     log('  ✅ 已连接到中央Server！');
-                    log(`  🔑 Cursor ID: ${cursorId}`);
+                    log(`  🔑 Cursor ID: ${injectId}`);
                     log(`  📡 WebSocket readyState: ${centralWs.readyState}`);
                     log('══════════════════════════════════════════════════════════════');
                     log('');

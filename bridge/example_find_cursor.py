@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
-示例：如何根据 Agent Hook 消息找到对应的 Cursor Hook 并发送命令
+示例：如何根据 hook 消息找到对应的 inject 并发送命令
 
 场景：
-1. 收到 Agent Hook 的 "complete" 事件（命令执行完成）
-2. 认为这个 Cursor 现在空闲了
+1. 收到 hook 的 "complete" 事件（命令执行完成）
+2. 认为这个 Cursor (inject) 现在空闲了
 3. 想给它发送新任务
 
 这个示例展示了整个流程。
+
+术语说明：
+- inject: 注入到 Cursor 的 WebSocket 服务（长连接）
+- hook: Agent Hooks，由 Cursor 调用的脚本（短连接）
+- server: Ortensia 中央服务器（消息路由）
 """
 
 import asyncio
@@ -17,14 +22,14 @@ from protocol import Message, MessageType, MessageBuilder
 # from websocket_server import registry, find_cursor_for_agent_hook
 
 
-async def handle_agent_complete_event(message: Message):
+async def handle_hook_complete_event(message: Message):
     """
-    处理 Agent Hook 的 complete 事件
+    处理 hook 的 complete 事件
     
     消息格式：
     {
         "type": "aituber_receive_text",
-        "from": "agent-hook-d42b-ed81",
+        "from": "hook-d42b-ed81",
         "to": "aituber",
         "timestamp": 1732253401001,
         "payload": {
@@ -33,53 +38,51 @@ async def handle_agent_complete_event(message: Message):
             "workspace": "/Users/user/Documents/project",
             "workspace_name": "project",
             "conversation_id": "2d8f9386...",
-            "related_cursor_id": "cursor-d42b"  # 这个不准确
+            "inject_id": "inject-12345"  # ← 关键！直接包含 inject ID
         }
     }
     """
     
     print("=" * 70)
-    print("📨 收到 Agent Hook 消息")
+    print("📨 收到 hook 消息")
     print("=" * 70)
     print(f"From: {message.from_}")
-    print(f"Workspace: {message.payload.get('workspace')}")
     print(f"Text: {message.payload.get('text')}")
+    print(f"Inject ID: {message.payload.get('inject_id')}")
     print()
     
     # ============================================================
-    # 步骤 1：根据 workspace 找到对应的 Cursor Hook
+    # 步骤 1：从消息中提取 inject_id
     # ============================================================
     
-    workspace = message.payload.get('workspace')
+    inject_id = message.payload.get('inject_id')
     
-    if not workspace:
-        print("❌ 消息缺少 workspace 字段")
+    if not inject_id:
+        print("❌ 消息缺少 inject_id 字段")
+        print("   这通常意味着 inject 未正确设置环境变量")
         return
     
-    # 从注册表查询（假设 registry 已经维护了 workspace → cursor_id 映射）
-    cursor_id = registry.get_cursor_by_workspace(workspace)
+    # ============================================================
+    # 步骤 2：直接通过 inject_id 查找
+    # ============================================================
     
-    if not cursor_id:
-        print(f"❌ 未找到 workspace 对应的 Cursor: {workspace}")
+    inject_client = registry.get_by_id(inject_id)
+    
+    if not inject_client:
+        print(f"❌ inject 客户端不存在或已断开: {inject_id}")
         return
     
-    cursor_client = registry.get_by_id(cursor_id)
-    
-    if not cursor_client:
-        print(f"❌ Cursor 客户端已断开: {cursor_id}")
-        return
-    
-    print(f"✅ 找到对应的 Cursor Hook: {cursor_id}")
+    print(f"✅ 找到对应的 inject: {inject_id}")
     print()
     
     # ============================================================
-    # 步骤 2：发送新任务到这个 Cursor
+    # 步骤 3：发送新任务到这个 inject
     # ============================================================
     
     # 例如：发送一个 Agent 执行命令
     command_message = MessageBuilder.agent_execute_prompt(
         from_id="server",
-        to_id=cursor_id,  # ← 发送给找到的 Cursor Hook
+        to_id=inject_id,  # ← 发送给找到的 inject
         agent_id="default",
         prompt="请分析当前项目的代码结构",
         options={
@@ -88,13 +91,13 @@ async def handle_agent_complete_event(message: Message):
         }
     )
     
-    print(f"📤 发送任务到 Cursor: {cursor_id}")
+    print(f"📤 发送任务到 inject: {inject_id}")
     print(f"   命令: agent_execute_prompt")
     print(f"   提示词: {command_message.payload.get('prompt')}")
     print()
     
     # 发送消息
-    await cursor_client.websocket.send(command_message.to_json())
+    await inject_client.websocket.send(command_message.to_json())
     
     print("✅ 任务已发送")
     print("=" * 70)
@@ -108,33 +111,33 @@ async def example_scenario():
     """完整场景示例"""
     
     print("\n" + "=" * 70)
-    print("🎬 场景演示：Agent Hook Complete → 发送新任务")
+    print("🎬 场景演示：hook Complete → 发送新任务")
     print("=" * 70)
     print()
     
-    # 1. Cursor Hook 注册（这会建立 workspace 映射）
-    print("1️⃣  Cursor Hook 注册")
+    # 1. inject 启动并注册
+    print("1️⃣  inject 启动并注册")
     print("-" * 70)
-    print("Client ID: cursor-12345")
-    print("Workspace: /Users/user/Documents/project")
-    print("→ 服务器维护映射: workspace → cursor-12345")
+    print("Cursor 启动（PID: 12345）")
+    print("inject 设置环境变量: ORTENSIA_INJECT_ID=inject-12345")
+    print("inject 连接到 server")
+    print("Client ID: inject-12345")
     print()
     
-    # 服务器端代码（在 handle_register 中）：
-    # registry.register_cursor_workspace("cursor-12345", "/Users/user/Documents/project")
-    
-    # 2. Agent Hook 发送 complete 事件
-    print("2️⃣  Agent Hook 发送 complete 事件")
+    # 2. hook 发送 complete 事件
+    print("2️⃣  hook 发送 complete 事件")
     print("-" * 70)
-    print("From: agent-hook-d42b-ed81")
-    print("Workspace: /Users/user/Documents/project")
+    print("Cursor 执行命令后调用 hook")
+    print("hook 读取环境变量: ORTENSIA_INJECT_ID=inject-12345")
+    print("From: hook-d42b-ed81")
+    print("inject_id: inject-12345  ← 关键！")
     print("Text: 命令完成：git status")
     print()
     
-    # 构造 Agent Hook 消息（模拟）
-    agent_message = Message(
+    # 构造 hook 消息（模拟）
+    hook_message = Message(
         type=MessageType.AITUBER_RECEIVE_TEXT,
-        from_="agent-hook-d42b-ed81",
+        from_="hook-d42b-ed81",
         to="aituber",
         timestamp=1732253401,
         payload={
@@ -143,19 +146,19 @@ async def example_scenario():
             "workspace": "/Users/user/Documents/project",
             "workspace_name": "project",
             "conversation_id": "2d8f9386...",
-            "related_cursor_id": "cursor-d42b"
+            "inject_id": "inject-12345"  # ← 直接包含 inject ID
         }
     )
     
-    # 3. 查找对应的 Cursor 并发送新任务
-    print("3️⃣  查找对应的 Cursor")
+    # 3. 查找对应的 inject 并发送新任务
+    print("3️⃣  查找对应的 inject")
     print("-" * 70)
-    print("workspace: /Users/user/Documents/project")
-    print("→ 查询 registry.workspace_to_cursor")
-    print("→ 找到: cursor-12345")
+    print("inject_id: inject-12345")
+    print("→ 直接查询 registry.get_by_id()")
+    print("→ 找到: inject-12345 ✅")
     print()
     
-    # await handle_agent_complete_event(agent_message)
+    # await handle_hook_complete_event(hook_message)
     
     print("✅ 完成！")
     print("=" * 70)
@@ -174,64 +177,70 @@ def quick_reference():
     print("=" * 70)
     print()
     
-    print("# 1. 当 Cursor Hook 注册时（在 handle_register 中）")
+    print("# 1. inject 设置环境变量（在 inject 启动时）")
     print("-" * 70)
     print("""
-if client_info.client_type == 'cursor_hook':
-    workspace = payload.get('workspace')
-    if workspace:
-        registry.register_cursor_workspace(client_id, workspace)
-        # 维护映射: workspace → cursor_id
+// inject 启动时设置环境变量
+const injectId = `inject-${process.pid}`;
+process.env.ORTENSIA_INJECT_ID = injectId;
+
+// 这样所有子进程（包括 hook）都能读取到这个变量
     """)
     print()
     
-    print("# 2. 当收到 Agent Hook 消息时")
+    print("# 2. hook 读取环境变量并发送消息")
     print("-" * 70)
     print("""
-async def handle_agent_message(message: Message):
-    # 从消息中提取 workspace
-    workspace = message.payload.get('workspace')
+# hook 从环境变量读取 inject ID
+inject_id = os.getenv('ORTENSIA_INJECT_ID', '')
+
+# 在消息 payload 中包含 inject_id
+message = {
+    "type": "aituber_receive_text",
+    "from": "hook-xxx",
+    "payload": {
+        "text": "命令完成",
+        "inject_id": inject_id  # ← 关键！
+    }
+}
+    """)
+    print()
     
-    # 查找对应的 Cursor ID
-    cursor_id = registry.get_cursor_by_workspace(workspace)
+    print("# 3. server 处理 hook 消息")
+    print("-" * 70)
+    print("""
+async def handle_hook_message(message: Message):
+    # 从消息中提取 inject_id
+    inject_id = message.payload.get('inject_id')
     
-    if cursor_id:
-        cursor_client = registry.get_by_id(cursor_id)
-        
-        # 现在可以发送命令给这个 Cursor
+    if not inject_id:
+        logger.warning("消息缺少 inject_id")
+        return
+    
+    # 直接通过 inject_id 查找
+    inject_client = registry.get_by_id(inject_id)
+    
+    if inject_client:
+        # 发送命令给这个 inject
         command = MessageBuilder.agent_execute_prompt(
             from_id="server",
-            to_id=cursor_id,
+            to_id=inject_id,  # ← 直接使用 inject_id
             agent_id="default",
-            prompt="你的任务"
+            prompt="新任务"
         )
         
-        await cursor_client.websocket.send(command.to_json())
-    """)
-    print()
-    
-    print("# 3. ClientRegistry 的新方法")
-    print("-" * 70)
-    print("""
-class ClientRegistry:
-    def __init__(self):
-        self.clients = {}
-        self.ws_to_id = {}
-        self.workspace_to_cursor = {}  # ← 新增
-    
-    def register_cursor_workspace(self, cursor_id, workspace):
-        '''注册 Cursor 的 workspace 映射'''
-        self.workspace_to_cursor[workspace] = cursor_id
-    
-    def get_cursor_by_workspace(self, workspace):
-        '''根据 workspace 获取 Cursor ID'''
-        return self.workspace_to_cursor.get(workspace)
+        await inject_client.websocket.send(command.to_json())
     """)
     print()
 
 
 if __name__ == "__main__":
-    print("\n🎯 这是一个示例文件，展示如何处理 Agent Hook → Cursor Hook 的场景")
+    print("\n🎯 这是一个示例文件，展示如何处理 hook → inject 的场景")
+    print()
+    print("术语说明：")
+    print("  inject: 注入到 Cursor 的 WebSocket 服务（长连接）")
+    print("  hook:   Agent Hooks，由 Cursor 调用的脚本（短连接）")
+    print("  server: Ortensia 中央服务器（消息路由）")
     print()
     
     # 运行示例场景

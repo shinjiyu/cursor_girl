@@ -10,6 +10,7 @@ import logging
 import asyncio
 import time
 import hashlib
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -103,24 +104,28 @@ class AgentHookHandler:
         try:
             import websockets
             
-            # 生成稳定的客户端 ID
-            # ID 策略：基于 workspace 生成短 ID，conversation 作为后缀
-            # 格式：agent-hook-{workspace_hash[:4]}-{conversation_hash[:4]}
-            # 这样：
-            #   - 可以通过 workspace_hash 与 inject 关联
-            #   - conversation_hash 区分不同会话
-            #   - 保持 ID 简短易读
+            # ============================================================
+            # 获取对应的 inject ID（从环境变量）
+            # ============================================================
+            # inject 在启动时设置 ORTENSIA_INJECT_ID 环境变量
+            # hook 从环境变量直接读取，无需通过 workspace 推测
+            inject_id = os.getenv('ORTENSIA_INJECT_ID', '')
+            
+            if not inject_id:
+                logger.warning("⚠️  未找到 ORTENSIA_INJECT_ID 环境变量")
+                logger.warning("   inject 可能未正确设置环境变量")
+                logger.warning("   将使用 workspace hash 作为备用方案")
+            
+            # ============================================================
+            # 生成 hook 的客户端 ID
+            # ============================================================
             workspace = self.input_data.get('workspace_roots', ['unknown'])[0] if self.input_data.get('workspace_roots') else 'unknown'
             conversation_id = self.input_data.get('conversation_id', 'default')
             
             # 计算哈希
             workspace_hash = hashlib.md5(workspace.encode()).hexdigest()[:4]
             conversation_hash = hashlib.md5(conversation_id.encode()).hexdigest()[:4]
-            client_id = f"agent-hook-{workspace_hash}-{conversation_hash}"
-            
-            # 计算对应的 Cursor Hook ID（用于关联）
-            # Inject 使用 cursor-{pid}，但我们可以推测基于 workspace 的 ID
-            related_cursor_id = f"cursor-{workspace_hash}"
+            client_id = f"hook-{workspace_hash}-{conversation_hash}"
             
             # 提取 workspace 名称（用于日志）
             workspace_name = Path(workspace).name if workspace != 'unknown' else 'unknown'
@@ -128,8 +133,11 @@ class AgentHookHandler:
             # 详细日志
             logger.info("💬 准备发送消息到オルテンシア:")
             logger.info(f"   • Workspace: {workspace_name}")
-            logger.info(f"   • 客户端ID: {client_id}")
-            logger.info(f"   • 关联Cursor: {related_cursor_id}")
+            logger.info(f"   • Hook ID: {client_id}")
+            if inject_id:
+                logger.info(f"   • Inject ID: {inject_id} ✅")
+            else:
+                logger.info(f"   • Inject ID: (未找到) ⚠️")
             logger.info(f"   • 文本: {text}")
             logger.info(f"   • 情绪: {emotion}")
             logger.info(f"   • 事件类型: {event_type or self.hook_name}")
@@ -170,15 +178,15 @@ class AgentHookHandler:
                             "payload": {
                                 "text": text,
                                 "emotion": emotion,
-                                "source": "agent_hook",
+                                "source": "hook",
                                 "hook_name": self.hook_name,
                                 "event_type": event_type or self.hook_name,
-                                # 添加 Cursor 会话信息，便于区分多个 Cursor 实例
+                                # 添加 Cursor 会话信息
                                 "workspace": workspace,
                                 "workspace_name": workspace_name,
                                 "conversation_id": conversation_id,
-                                # 添加关联的 Cursor Hook ID（用于服务器端关联）
-                                "related_cursor_id": related_cursor_id
+                                # ✅ 关键：直接包含 inject ID（从环境变量读取）
+                                "inject_id": inject_id if inject_id else None
                             }
                         }
                         

@@ -297,38 +297,33 @@ async def handle_disconnect(client_info: ClientInfo, message: Message):
     logger.info(f"👋 [{client_info.client_id}] 主动断开: {reason}")
 
 
-async def find_cursor_for_agent_hook(message: Message) -> Optional[ClientInfo]:
+async def find_inject_for_hook(message: Message) -> Optional[ClientInfo]:
     """
-    根据 Agent Hook 消息找到对应的 Cursor Hook
+    根据 hook 消息找到对应的 inject
     
     使用场景：
-    - Agent Hook 发送 "complete" 事件
-    - 想给对应的 Cursor 发送新任务
+    - hook 发送 "complete" 事件
+    - 想给对应的 inject 发送新任务
     
-    返回：对应的 Cursor ClientInfo，如果找不到则返回 None
+    返回：对应的 inject ClientInfo，如果找不到则返回 None
     """
     payload = message.payload
-    workspace = payload.get('workspace')
+    inject_id = payload.get('inject_id')
     
-    if not workspace:
-        logger.warning(f"⚠️  Agent Hook 消息缺少 workspace 字段")
+    if not inject_id:
+        logger.warning(f"⚠️  hook 消息缺少 inject_id 字段")
+        logger.warning(f"   这通常意味着 inject 未正确设置环境变量 ORTENSIA_INJECT_ID")
         return None
     
-    # 根据 workspace 查找对应的 Cursor
-    cursor_id = registry.get_cursor_by_workspace(workspace)
+    # 直接通过 inject_id 查找
+    inject_client = registry.get_by_id(inject_id)
     
-    if not cursor_id:
-        logger.warning(f"⚠️  未找到 workspace 对应的 Cursor: {workspace}")
+    if not inject_client:
+        logger.warning(f"⚠️  inject 客户端不存在或已断开: {inject_id}")
         return None
     
-    cursor_client = registry.get_by_id(cursor_id)
-    
-    if not cursor_client:
-        logger.warning(f"⚠️  Cursor 客户端已断开: {cursor_id}")
-        return None
-    
-    logger.info(f"✅ 找到对应的 Cursor: {cursor_id}")
-    return cursor_client
+    logger.info(f"✅ 找到对应的 inject: {inject_id}")
+    return inject_client
 
 
 async def handle_composer_send_prompt(client_info: ClientInfo, message: Message):
