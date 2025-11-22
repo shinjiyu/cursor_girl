@@ -43,7 +43,7 @@ chmod +x .cursor/hooks/*
 
 ```bash
 # WebSocket 服务器地址
-WS_SERVER="ws://localhost:8000/ws"
+WS_SERVER="ws://localhost:8765"
 
 # オルテンシア Bridge 路径
 BRIDGE_PATH="/Users/user/Documents/ cursorgirl/bridge"

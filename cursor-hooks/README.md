@@ -107,7 +107,7 @@ cd cursor-hooks
 编辑 `.cursor/hooks/config.sh` 配置 WebSocket 服务器地址：
 
 ```bash
-WS_SERVER="ws://localhost:8000/ws"
+WS_SERVER="ws://localhost:8765"
 ORTENSIA_BRIDGE="/path/to/cursorgirl/bridge"
 ```
 

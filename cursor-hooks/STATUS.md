@@ -122,7 +122,7 @@ cursor-hooks/
 Cursor 事件 
   → Hook 脚本 
   → WebSocket 发送器 
-  → WebSocket 服务器 (port 8000)
+  → WebSocket 服务器 (port 8765 - Ortensia 中央服务器)
   → TTS 生成音频
   → AITuber Kit 前端
   → オルテンシア 说话和动作 ✨

@@ -51,10 +51,10 @@ echo ""
 
 # 检查 WebSocket 服务器
 echo "🔍 检查 WebSocket 服务器状态..."
-if lsof -i :8000 > /dev/null 2>&1; then
-    echo "✅ WebSocket 服务器运行中 (端口 8000)"
+if lsof -i :8765 > /dev/null 2>&1; then
+    echo "✅ WebSocket 服务器运行中 (端口 8765 - Ortensia 中央服务器)"
 else
-    echo "⚠️  WebSocket 服务器未运行"
+    echo "⚠️  WebSocket 服务器未运行 (需要启动 bridge/websocket_server.py)"
     echo "   启动方法: cd bridge && python websocket_server.py"
     echo ""
     echo "   继续测试（但オルテンシア 不会收到消息）..."

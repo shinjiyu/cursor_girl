@@ -70,7 +70,7 @@ tail -f /tmp/websocket_server.log
 
 ```bash
 # 检查 WebSocket 服务器
-lsof -i :8000
+lsof -i :8765
 
 # 如果没有运行，启动它
 cd "/Users/user/Documents/ cursorgirl/bridge"
