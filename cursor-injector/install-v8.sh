@@ -203,6 +203,11 @@ cat > "$MAIN_JS" << 'INJECT_END'
             
             try {
                 switch (type) {
+                    case 'register_ack':
+                        // 注册确认，不需要处理
+                        log(`✅ [中央] 注册成功`);
+                        break;
+                    
                     case 'composer_send_prompt':
                         await handleComposerSendPrompt(from, payload);
                         break;
