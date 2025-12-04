@@ -50,15 +50,39 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class ClientInfo:
-    """客户端信息"""
+    """客户端信息（支持多角色）"""
     
-    def __init__(self, websocket, client_id: str, client_type: str):
+    def __init__(self, websocket, client_id: str, client_types: set = None):
         self.websocket = websocket
         self.client_id = client_id
-        self.client_type = client_type
+        self.client_types = client_types or set()  # 多角色集合
         self.registered_at = time.time()
         self.last_heartbeat = time.time()
         self.metadata = {}  # 额外的元数据
+    
+    def add_role(self, role: str):
+        """添加角色"""
+        self.client_types.add(role)
+    
+    def remove_role(self, role: str):
+        """移除角色"""
+        self.client_types.discard(role)
+    
+    def has_role(self, role: str) -> bool:
+        """检查是否拥有某个角色"""
+        return role in self.client_types
+    
+    @property
+    def client_type(self) -> str:
+        """向后兼容：返回第一个角色（如果只有一个角色）或主要角色"""
+        if not self.client_types:
+            return "unknown"
+        # 优先级：cursor_inject > aituber_client > command_client > agent_hook
+        priority = ['cursor_inject', 'aituber_client', 'command_client', 'agent_hook']
+        for role in priority:
+            if role in self.client_types:
+                return role
+        return list(self.client_types)[0]
     
     def update_heartbeat(self):
         """更新心跳时间"""
@@ -69,7 +93,8 @@ class ClientInfo:
         return (time.time() - self.last_heartbeat) < timeout
     
     def __repr__(self):
-        return f"ClientInfo({self.client_id}, {self.client_type})"
+        roles = ", ".join(sorted(self.client_types)) if self.client_types else "none"
+        return f"ClientInfo({self.client_id}, roles=[{roles}])"
 
 
 class ClientRegistry:
@@ -78,19 +103,45 @@ class ClientRegistry:
     def __init__(self):
         self.clients: Dict[str, ClientInfo] = {}  # client_id -> ClientInfo
         self.ws_to_id: Dict = {}  # websocket -> client_id
-        self.workspace_to_cursor: Dict[str, str] = {}  # workspace -> cursor_id
+        self.workspace_to_cursor: Dict[str, str] = {}  # workspace -> cursor_id (旧方案)
+        
+        # V10: conversation_id 映射
+        self.conversation_id_to_inject_id: Dict[str, str] = {}  # conversation_id -> inject_id
+        self.inject_id_to_conversation_id: Dict[str, str] = {}  # inject_id -> conversation_id
     
-    def register(self, websocket, client_id: str, client_type: str, metadata: dict = None):
-        """注册客户端"""
-        client_info = ClientInfo(websocket, client_id, client_type)
+    def register(self, websocket, client_id: str, client_types: list, metadata: dict = None):
+        """
+        注册客户端（支持多角色）
+        
+        Args:
+            websocket: WebSocket 连接
+            client_id: 客户端 ID
+            client_types: 角色列表，例如 ["aituber", "command_client"]
+            metadata: 元数据字典
+        
+        Returns:
+            ClientInfo 对象
+        """
+        if client_id in self.clients:
+            # 客户端已存在，添加新角色
+            client_info = self.clients[client_id]
+            old_roles = client_info.client_types.copy()
+            for role in client_types:
+                client_info.add_role(role)
+            new_roles = client_info.client_types - old_roles
+            if new_roles:
+                logger.info(f"🔄 [{client_id}] 添加角色: {sorted(new_roles)}")
+            logger.info(f"📝 [{client_id}] 当前角色: {sorted(client_info.client_types)}")
+        else:
+            # 新客户端
+            client_info = ClientInfo(websocket, client_id, set(client_types))
+            self.clients[client_id] = client_info
+            self.ws_to_id[websocket] = client_id
+            logger.info(f"📝 注册客户端: {client_id}，角色: {sorted(client_types)}")
         
         if metadata:
-            client_info.metadata = metadata
+            client_info.metadata.update(metadata)
         
-        self.clients[client_id] = client_info
-        self.ws_to_id[websocket] = client_id
-        
-        logger.info(f"📝 注册客户端: {client_id} ({client_type})")
         return client_info
     
     def unregister(self, websocket):
@@ -99,17 +150,17 @@ class ClientRegistry:
             client_id = self.ws_to_id[websocket]
             if client_id in self.clients:
                 client_info = self.clients[client_id]
-                client_type = client_info.client_type
+                roles_str = ", ".join(sorted(client_info.client_types)) if client_info.client_types else "none"
                 
-                # 如果是 cursor_hook，清理 workspace 映射
-                if client_type == 'cursor_hook':
+                # 如果是 cursor_hook 或 agent_hook，清理 workspace 映射
+                if client_info.has_role('cursor_hook') or client_info.has_role('agent_hook'):
                     workspace = client_info.metadata.get('workspace')
                     if workspace and self.workspace_to_cursor.get(workspace) == client_id:
                         del self.workspace_to_cursor[workspace]
                         logger.info(f"🗑️  清理 workspace 映射: {workspace}")
                 
                 del self.clients[client_id]
-                logger.info(f"📤 注销客户端: {client_id} ({client_type})")
+                logger.info(f"📤 注销客户端: {client_id} (角色: [{roles_str}])")
             del self.ws_to_id[websocket]
     
     def get_by_id(self, client_id: str) -> Optional[ClientInfo]:
@@ -124,8 +175,8 @@ class ClientRegistry:
         return None
     
     def get_by_type(self, client_type: str) -> list:
-        """获取指定类型的所有客户端"""
-        return [c for c in self.clients.values() if c.client_type == client_type]
+        """获取拥有指定角色的所有客户端（支持多角色）"""
+        return [c for c in self.clients.values() if c.has_role(client_type)]
     
     def update_heartbeat(self, client_id: str):
         """更新客户端心跳"""
@@ -144,6 +195,27 @@ class ClientRegistry:
         if cursor_id and cursor_id in self.clients:
             return cursor_id
         return None
+    
+    # ============================================================
+    # V10: Conversation ID 映射管理
+    # ============================================================
+    
+    def register_conversation_inject_mapping(self, conversation_id: str, inject_id: str):
+        """注册 conversation_id 到 inject_id 的映射"""
+        self.conversation_id_to_inject_id[conversation_id] = inject_id
+        self.inject_id_to_conversation_id[inject_id] = conversation_id
+        logger.info(f"🗺️  V10 映射: {conversation_id} ↔ {inject_id}")
+    
+    def get_inject_by_conversation_id(self, conversation_id: str) -> Optional[str]:
+        """根据 conversation_id 获取对应的 inject_id"""
+        inject_id = self.conversation_id_to_inject_id.get(conversation_id)
+        if inject_id and inject_id in self.clients:
+            return inject_id
+        return None
+    
+    def get_conversation_id_by_inject(self, inject_id: str) -> Optional[str]:
+        """根据 inject_id 获取对应的 conversation_id"""
+        return self.inject_id_to_conversation_id.get(inject_id)
     
     def get_stats(self) -> dict:
         """获取统计信息"""
@@ -218,7 +290,7 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         
         # AITuber 操作
         elif msg_type == MessageType.AITUBER_RECEIVE_TEXT:
-            await route_message(message)
+            await handle_aituber_receive_text(client_info, message)
         
         elif msg_type == MessageType.AITUBER_SPEAK:
             await route_message(message)
@@ -228,6 +300,27 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         
         elif msg_type == MessageType.AITUBER_STATUS:
             await route_message(message)
+        
+        # V10: Conversation ID 操作
+        elif msg_type == MessageType.GET_CONVERSATION_ID:
+            await route_message(message)  # 转发给指定的 inject
+        
+        elif msg_type == MessageType.GET_CONVERSATION_ID_RESULT:
+            await handle_get_conversation_id_result(client_info, message)
+        
+        # Cursor 输入操作
+        elif msg_type == MessageType.CURSOR_INPUT_TEXT:
+            await handle_cursor_input_text(client_info, message)
+        
+        elif msg_type == MessageType.CURSOR_INPUT_TEXT_RESULT:
+            await route_message(message)  # 结果转发回发送者
+        
+        # 通用 JavaScript 执行
+        elif msg_type == MessageType.EXECUTE_JS:
+            await route_message(message)  # 转发给 inject
+        
+        elif msg_type == MessageType.EXECUTE_JS_RESULT:
+            await route_message(message)  # 结果转发回发送者
         
         else:
             logger.warning(f"⚠️  未知消息类型: {msg_type.value}")
@@ -239,31 +332,56 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
 
 
 async def handle_register(client_info: ClientInfo, message: Message):
-    """处理注册消息"""
+    """处理注册消息（支持多角色）"""
     payload = message.payload
     client_id = message.from_
-    old_id = client_info.client_id  # ✅ 保存旧 ID
+    old_id = client_info.client_id  # 保存旧 ID
+    
+    # 🆕 兼容新旧协议
+    if 'client_types' in payload:
+        # 新协议：多角色列表
+        client_types = payload['client_types']
+        if not isinstance(client_types, list):
+            client_types = [client_types]
+    elif 'client_type' in payload:
+        # 旧协议：单角色字符串
+        client_types = [payload['client_type']]
+    else:
+        client_types = ['unknown']
     
     # 更新客户端信息
     client_info.client_id = client_id
-    client_info.client_type = payload.get('client_type', 'unknown')
-    client_info.metadata = payload
+    
+    # 更新角色（如果已存在，添加新角色；否则设置角色）
+    if client_id in registry.clients and client_id != old_id:
+        # 这是已存在的客户端重新注册，添加新角色
+        existing_info = registry.clients[client_id]
+        for role in client_types:
+            existing_info.add_role(role)
+        client_info = existing_info
+    else:
+        # 新客户端或ID未变
+        for role in client_types:
+            client_info.add_role(role)
+    
+    client_info.metadata.update(payload)
     client_info.update_heartbeat()
     
     # 更新注册表（ID 可能变了）
-    if old_id and old_id in registry.clients:
+    if old_id and old_id in registry.clients and old_id != client_id:
         del registry.clients[old_id]
     
     registry.clients[client_id] = client_info
     registry.ws_to_id[client_info.websocket] = client_id
     
-    # ✅ 如果是 cursor_hook，注册 workspace 映射
-    if client_info.client_type == 'cursor_hook':
+    # 如果是 cursor_hook 或 agent_hook，注册 workspace 映射
+    if client_info.has_role('cursor_hook') or client_info.has_role('agent_hook') or client_info.has_role('cursor_inject'):
         workspace = payload.get('workspace')
         if workspace:
             registry.register_cursor_workspace(client_id, workspace)
     
-    logger.info(f"✅ [{client_id}] 注册成功: {client_info.client_type}")
+    roles_str = ", ".join(sorted(client_info.client_types))
+    logger.info(f"✅ [{client_id}] 注册成功，角色: [{roles_str}]")
     
     # 发送确认
     ack_msg = MessageBuilder.register_ack(
@@ -273,6 +391,7 @@ async def handle_register(client_info: ClientInfo, message: Message):
         server_info={
             "version": "2.0",
             "supported_protocols": ["v1"],
+            "multi_role": True,  # 🆕 标记服务器支持多角色
             "server_time": int(time.time())
         }
     )
@@ -348,6 +467,299 @@ async def handle_agent_stop_execution(client_info: ClientInfo, message: Message)
     """处理 Agent 停止执行命令（语义操作）"""
     # V9 新增：语义操作，直接路由到目标 Cursor Hook
     await route_message(message)
+
+
+async def handle_aituber_receive_text(client_info: ClientInfo, message: Message):
+    """处理 Hook 发来的 aituber_receive_text 消息
+    
+    功能：
+    1. 生成 TTS 音频（如果 TTS 可用）
+    2. 将消息（含音频）转发给所有 AITuber 客户端
+    
+    工作流程:
+    1. 提取文本和情绪
+    2. 使用 TTS 生成音频文件
+    3. 将音频文件路径添加到消息中
+    4. 转发给所有 AITuber 客户端
+    """
+    hook_id = message.from_
+    
+    # 1. 从 hook ID 提取 conversation_id（用于日志）
+    conversation_id = "unknown"
+    if hook_id.startswith("hook-"):
+        conversation_id = hook_id[5:]
+    
+    logger.info(f"📨 [AITuber] Hook 消息，conversation_id: {conversation_id}")
+    
+    # 2. 获取所有 AITuber 客户端
+    aituber_clients = registry.get_by_type('aituber_client')
+    
+    if not aituber_clients:
+        logger.warning(f"⚠️  目标客户端不存在: aituber")
+        return
+    
+    # 3. 生成 TTS 音频（如果 TTS 可用）
+    payload = message.payload
+    text = payload.get('text', '')
+    emotion = payload.get('emotion', 'neutral')
+    
+    if text and tts_manager:
+        try:
+            logger.info(f"🎤 生成 TTS: {text[:30]}... (emotion: {emotion})")
+            
+            # 生成音频文件（在线程池中执行，避免阻塞）
+            audio_file = await asyncio.to_thread(
+                tts_manager.generate_with_emotion,
+                text,
+                emotion
+            )
+            
+            # 将音频文件路径添加到消息的 payload 中
+            message.payload['audio_file'] = audio_file
+            logger.info(f"✅ TTS 生成成功: {audio_file}")
+            
+        except Exception as e:
+            logger.error(f"❌ TTS 生成失败: {e}")
+            # TTS 失败不影响消息转发，继续执行
+    
+    # 4. 转发给所有 AITuber 客户端
+    for aituber in aituber_clients:
+        try:
+            await aituber.websocket.send(message.to_json())
+            logger.info(f"📤 [AITuber] 消息已转发: {hook_id} → {aituber.client_id}")
+        except Exception as e:
+            logger.error(f"❌ [AITuber] 转发失败: {aituber.client_id}, {e}")
+
+
+async def handle_get_conversation_id_result(client_info: ClientInfo, message: Message):
+    """V10: 处理 inject 返回的 conversation_id 结果
+    
+    当 inject 返回 conversation_id 后，建立映射关系
+    """
+    payload = message.payload
+    success = payload.get('success', False)
+    conversation_id = payload.get('conversation_id')
+    inject_id = payload.get('inject_id') or message.from_
+    
+    if success and conversation_id:
+        # 建立映射
+        registry.register_conversation_inject_mapping(conversation_id, inject_id)
+        logger.info(f"✅ [V10] 映射已建立: {conversation_id} ↔ {inject_id}")
+    else:
+        error = payload.get('error', '未知错误')
+        logger.warning(f"⚠️  [V10] Inject {inject_id} 无法提供 conversation_id: {error}")
+
+
+async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
+    """处理从 AITuber 发来的 cursor_input_text 消息
+    
+    功能：将文本发送到 Cursor inject，通过动态执行 JS 代码来输入到输入框（不执行）
+    
+    工作流程:
+    1. 生成 JavaScript 代码来操作 Cursor 的输入框
+    2. 发送 execute_js 消息给 inject
+    """
+    from_id = message.from_
+    text = message.payload.get('text', '')
+    conversation_id = message.payload.get('conversation_id')
+    execute = message.payload.get('execute', False)  # 是否执行
+    
+    action_text = "输入并执行" if execute else "输入"
+    logger.info(f"📝 [Cursor Input] 收到{action_text}请求: {text[:50]}... (from: {from_id})")
+    
+    # 获取所有 cursor_inject 客户端
+    inject_clients = registry.get_by_type('cursor_inject')
+    
+    if not inject_clients:
+        logger.warning(f"⚠️  没有可用的 Cursor inject 客户端")
+        # 发送失败响应
+        error_msg = MessageBuilder.cursor_input_text_result(
+            from_id="server",
+            to_id=from_id,
+            success=False,
+            error="没有可用的 Cursor inject 客户端"
+        )
+        await client_info.websocket.send(error_msg.to_json())
+        return
+    
+    # 如果指定了 conversation_id，尝试找到对应的 inject
+    target_inject = None
+    if conversation_id:
+        target_inject = registry.get_inject_by_conversation_id(conversation_id)
+    
+    # 如果没有找到特定的 inject，使用第一个可用的
+    if not target_inject and inject_clients:
+        target_inject = inject_clients[0]
+    
+    if target_inject:
+        try:
+            # 生成 JavaScript 代码来输入文本
+            # 使用模拟键盘输入的方式，适用于 Lexical 等复杂编辑器
+            import json
+            js_code = f"""
+            (async function() {{
+                try {{
+                    // 查找 Composer 输入框
+                    const inputSelector = 'div[contenteditable="true"][role="textbox"],' +
+                                         'div[contenteditable="true"][aria-label*="composer"],' +
+                                         'textarea[placeholder*="Ask"]';
+                    
+                    const inputElement = document.querySelector(inputSelector);
+                    
+                    if (!inputElement) {{
+                        return JSON.stringify({{
+                            success: false,
+                            error: '找不到 Cursor 输入框'
+                        }});
+                    }}
+                    
+                    // 聚焦输入框
+                    inputElement.focus();
+                    
+                    // 清空现有内容（如果有）
+                    if (inputElement.tagName === 'TEXTAREA' || inputElement.tagName === 'INPUT') {{
+                        inputElement.value = '';
+                    }} else {{
+                        // 对于 contenteditable，选中所有内容并删除
+                        const range = document.createRange();
+                        range.selectNodeContents(inputElement);
+                        const selection = window.getSelection();
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        document.execCommand('delete', false);
+                    }}
+                    
+                    // 模拟键盘输入
+                    const textToInput = {json.dumps(text)};
+                    
+                    // 使用 document.execCommand insertText（对 Lexical 等编辑器有效）
+                    document.execCommand('insertText', false, textToInput);
+                    
+                    // 备用方法：逐字符模拟输入事件
+                    if (!inputElement.textContent && !inputElement.value) {{
+                        for (let char of textToInput) {{
+                            const keyboardEvent = new KeyboardEvent('keypress', {{
+                                key: char,
+                                code: 'Key' + char.toUpperCase(),
+                                charCode: char.charCodeAt(0),
+                                keyCode: char.charCodeAt(0),
+                                bubbles: true,
+                                cancelable: true
+                            }});
+                            inputElement.dispatchEvent(keyboardEvent);
+                            
+                            const inputEvent = new InputEvent('input', {{
+                                data: char,
+                                inputType: 'insertText',
+                                bubbles: true,
+                                cancelable: false
+                            }});
+                            inputElement.dispatchEvent(inputEvent);
+                        }}
+                    }}
+                    
+                    // 验证内容是否输入成功
+                    let currentContent = '';
+                    if (inputElement.tagName === 'TEXTAREA' || inputElement.tagName === 'INPUT') {{
+                        currentContent = inputElement.value;
+                    }} else {{
+                        currentContent = inputElement.textContent || inputElement.innerText || '';
+                    }}
+                    
+                    const shouldExecute = {json.dumps(execute)};
+                    
+                    // 如果需要执行，模拟按 Enter 键
+                    if (shouldExecute) {{
+                        // 等待一小段时间确保输入已处理
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        
+                        // 模拟按下 Enter 键
+                        const enterEvent = new KeyboardEvent('keydown', {{
+                            key: 'Enter',
+                            code: 'Enter',
+                            keyCode: 13,
+                            which: 13,
+                            bubbles: true,
+                            cancelable: true
+                        }});
+                        inputElement.dispatchEvent(enterEvent);
+                        
+                        const enterUpEvent = new KeyboardEvent('keyup', {{
+                            key: 'Enter',
+                            code: 'Enter',
+                            keyCode: 13,
+                            which: 13,
+                            bubbles: true,
+                            cancelable: true
+                        }});
+                        inputElement.dispatchEvent(enterUpEvent);
+                        
+                        // 也尝试查找并点击发送按钮（备用方案）
+                        const sendButton = document.querySelector('button[aria-label*="Send"]') ||
+                                          document.querySelector('button[title*="Send"]') ||
+                                          document.querySelector('button[type="submit"]');
+                        if (sendButton) {{
+                            sendButton.click();
+                        }}
+                    }}
+                    
+                    return JSON.stringify({{
+                        success: currentContent.includes(textToInput) || currentContent.length > 0,
+                        message: shouldExecute ? '文本已输入并执行' : '文本已输入到 Cursor',
+                        executed: shouldExecute,
+                        inputLength: textToInput.length,
+                        currentLength: currentContent.length,
+                        preview: currentContent.substring(0, 50)
+                    }});
+                }} catch (error) {{
+                    return JSON.stringify({{
+                        success: false,
+                        error: error.message
+                    }});
+                }}
+            }})()
+            """
+            
+            # 发送 execute_js 消息给 inject
+            execute_msg = MessageBuilder.execute_js(
+                from_id="server",
+                to_id=target_inject.client_id,
+                code=js_code,
+                request_id=f"input_text_{from_id}_{int(time.time())}"
+            )
+            
+            await target_inject.websocket.send(execute_msg.to_json())
+            logger.info(f"📤 [Cursor Input] JS 代码已发送: server → {target_inject.client_id}")
+            
+            # 注意：这里不等待结果，直接返回成功（异步模式）
+            # 如果需要等待结果，需要实现一个回调机制
+            success_msg = MessageBuilder.cursor_input_text_result(
+                from_id="server",
+                to_id=from_id,
+                success=True,
+                message="输入请求已发送"
+            )
+            await client_info.websocket.send(success_msg.to_json())
+            
+        except Exception as e:
+            logger.error(f"❌ [Cursor Input] 处理失败: {e}")
+            # 发送失败响应
+            error_msg = MessageBuilder.cursor_input_text_result(
+                from_id="server",
+                to_id=from_id,
+                success=False,
+                error=str(e)
+            )
+            await client_info.websocket.send(error_msg.to_json())
+    else:
+        logger.warning(f"⚠️  找不到目标 inject")
+        error_msg = MessageBuilder.cursor_input_text_result(
+            from_id="server",
+            to_id=from_id,
+            success=False,
+            error="找不到目标 Cursor inject"
+        )
+        await client_info.websocket.send(error_msg.to_json())
 
 
 async def route_message(message: Message):
@@ -466,7 +878,7 @@ async def handle_client(websocket):
     
     # 创建临时客户端信息（等待注册）
     temp_id = f"temp-{id(websocket)}"
-    client_info = ClientInfo(websocket, temp_id, "unknown")
+    client_info = ClientInfo(websocket, temp_id, {"unknown"})  # 🆕 使用 set 而不是字符串
     
     # 临时注册
     registry.clients[temp_id] = client_info

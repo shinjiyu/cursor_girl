@@ -27,6 +27,11 @@ export enum MessageType {
   AITUBER_SPEAK = 'aituber_speak',
   AITUBER_EMOTION = 'aituber_emotion',
   AITUBER_STATUS = 'aituber_status',
+  AITUBER_RECEIVE_TEXT = 'aituber_receive_text',  // 接收文本消息（从 hooks）
+  
+  // Cursor 输入操作
+  CURSOR_INPUT_TEXT = 'cursor_input_text',  // 向 Cursor 输入文本（不执行）
+  CURSOR_INPUT_TEXT_RESULT = 'cursor_input_text_result',  // 输入文本结果
 }
 
 export interface OrtensiaMessage {
@@ -46,9 +51,21 @@ export class OrtensiaClient {
   private clientId: string
   private heartbeatInterval: number | null = null
   private messageHandlers: Map<MessageType, (msg: OrtensiaMessage) => void> = new Map()
+  
+  // 单例模式
+  private static instance: OrtensiaClient | null = null
 
   constructor() {
     this.clientId = this.generateClientId()
+    // 设置单例
+    OrtensiaClient.instance = this
+  }
+  
+  /**
+   * 获取全局单例实例
+   */
+  public static getInstance(): OrtensiaClient | null {
+    return OrtensiaClient.instance
   }
 
   /**
@@ -98,7 +115,7 @@ export class OrtensiaClient {
   }
 
   /**
-   * 发送注册消息
+   * 发送注册消息（注册多个角色）
    */
   private sendRegister() {
     const message: OrtensiaMessage = {
@@ -107,7 +124,8 @@ export class OrtensiaClient {
       to: 'server',
       timestamp: Date.now(),
       payload: {
-        client_type: ClientType.AITUBER_CLIENT,
+        // 🆕 注册多个角色：aituber_client + command_client
+        client_types: ['aituber_client', 'command_client'],
         platform: this.getPlatform(),
         pid: process.pid || 0,
         version: '1.0.0',
@@ -119,7 +137,7 @@ export class OrtensiaClient {
     }
 
     this.send(message)
-    console.log('📤 [Ortensia] 发送注册消息:', this.clientId)
+    console.log('📤 [Ortensia] 发送注册消息 (多角色):', this.clientId, ['aituber_client', 'command_client'])
   }
 
   /**
@@ -184,6 +202,15 @@ export class OrtensiaClient {
         
         case MessageType.HEARTBEAT_ACK:
           // 心跳响应，不需要处理
+          break
+        
+        case MessageType.AITUBER_RECEIVE_TEXT:
+          console.log('📬 [Ortensia] 收到 AITuber 消息:', {
+            text: message.payload.text,
+            emotion: message.payload.emotion,
+            audio_file: message.payload.audio_file,
+            source: message.payload.source
+          })
           break
         
         default:
@@ -253,6 +280,27 @@ export class OrtensiaClient {
 
     this.send(message)
     console.log('😊 [Ortensia] 发送情绪:', emotion)
+  }
+
+  /**
+   * 向 Cursor 发送文本输入请求（不执行）
+   */
+  public sendCursorInputText(text: string, conversationId?: string, execute: boolean = true) {
+    const message: OrtensiaMessage = {
+      type: MessageType.CURSOR_INPUT_TEXT,
+      from: this.clientId,
+      to: 'cursor_inject',  // 发送给 inject 客户端
+      timestamp: Date.now(),
+      payload: {
+        text,
+        conversation_id: conversationId,
+        execute,  // 是否立即执行
+      },
+    }
+
+    this.send(message)
+    const actionText = execute ? '输入并执行' : '输入'
+    console.log(`⌨️  [Ortensia] ${actionText}文本到 Cursor:`, text.substring(0, 50))
   }
 
   /**

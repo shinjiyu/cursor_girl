@@ -92,6 +92,18 @@ class MessageType(str, Enum):
     AITUBER_RECEIVE_TEXT = "aituber_receive_text"  # 发送文本给 AITuber
     AITUBER_EMOTION = "aituber_emotion"          # AITuber 情绪变化
     AITUBER_STATUS = "aituber_status"            # AITuber 状态更新
+    
+    # V10: Conversation ID 操作
+    GET_CONVERSATION_ID = "get_conversation_id"  # 查询 inject 的 conversation_id
+    GET_CONVERSATION_ID_RESULT = "get_conversation_id_result"  # conversation_id 查询结果
+    
+    # Cursor 输入操作
+    CURSOR_INPUT_TEXT = "cursor_input_text"  # 向 Cursor 输入文本（不执行）
+    CURSOR_INPUT_TEXT_RESULT = "cursor_input_text_result"  # 输入文本结果
+    
+    # 通用 JavaScript 执行（inject 专用）
+    EXECUTE_JS = "execute_js"  # 在 Cursor 中执行 JavaScript 代码
+    EXECUTE_JS_RESULT = "execute_js_result"  # JavaScript 执行结果
 
 
 # ============================================================================
@@ -100,10 +112,15 @@ class MessageType(str, Enum):
 
 @dataclass
 class RegisterPayload:
-    """注册消息的 Payload"""
-    client_type: ClientType
+    """注册消息的 Payload（支持多角色）"""
     platform: Platform
     pid: int
+    
+    # 🆕 多角色支持（推荐使用）
+    client_types: Optional[List[str]] = None  # 角色列表，如 ["aituber", "command_client"]
+    
+    # 向后兼容：单角色（如果 client_types 为空，使用此字段）
+    client_type: Optional[ClientType] = None
     
     # Cursor Hook 专用字段
     cursor_id: Optional[str] = None
@@ -242,6 +259,53 @@ class DisconnectPayload:
     reason: DisconnectReason
 
 
+@dataclass
+class GetConversationIdPayload:
+    """查询 conversation_id 的 Payload (V10)"""
+    pass  # 无需额外参数
+
+
+@dataclass
+class GetConversationIdResultPayload:
+    """conversation_id 查询结果的 Payload (V10)"""
+    success: bool
+    conversation_id: Optional[str] = None
+    inject_id: Optional[str] = None  # 返回 inject 自己的 ID
+    error: Optional[str] = None
+
+
+@dataclass
+class CursorInputTextPayload:
+    """向 Cursor 输入文本的 Payload"""
+    text: str  # 要输入的文本
+    conversation_id: Optional[str] = None  # 目标对话ID（可选）
+    execute: bool = False  # 是否立即执行（按 Enter 键）
+
+
+@dataclass
+class CursorInputTextResultPayload:
+    """Cursor 输入文本结果的 Payload"""
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class ExecuteJsPayload:
+    """执行 JavaScript 的 Payload"""
+    code: str  # JavaScript 代码
+    request_id: Optional[str] = None  # 请求 ID（用于匹配响应）
+
+
+@dataclass
+class ExecuteJsResultPayload:
+    """JavaScript 执行结果的 Payload"""
+    success: bool
+    result: Optional[Any] = None  # 执行结果
+    error: Optional[str] = None
+    request_id: Optional[str] = None
+
+
 # ============================================================================
 # 消息基础类
 # ============================================================================
@@ -309,16 +373,49 @@ class MessageBuilder:
     @staticmethod
     def register(
         from_id: str,
-        client_type: ClientType,
         platform: Platform,
         pid: int,
+        client_type: ClientType = None,  # 🆕 单角色（向后兼容）
+        client_types: List[str] = None,  # 🆕 多角色（推荐）
         **kwargs
     ) -> Message:
-        """创建注册消息"""
+        """
+        创建注册消息（支持多角色）
+        
+        Args:
+            from_id: 客户端 ID
+            platform: 平台类型
+            pid: 进程 ID
+            client_type: 单角色（旧协议，向后兼容）
+            client_types: 多角色列表（新协议，推荐）
+            **kwargs: 其他字段
+        
+        Examples:
+            # 单角色（旧方式）
+            MessageBuilder.register("client-1", Platform.DARWIN, 1234, 
+                                   client_type=ClientType.AITUBER_CLIENT)
+            
+            # 多角色（新方式）
+            MessageBuilder.register("client-1", Platform.DARWIN, 1234,
+                                   client_types=["aituber_client", "command_client"])
+        """
+        # 优先使用 client_types，如果没有则使用 client_type
+        if client_types:
+            types_to_use = client_types
+            type_to_use = None
+        elif client_type:
+            types_to_use = None
+            type_to_use = client_type
+        else:
+            # 都没有，默认 unknown
+            types_to_use = None
+            type_to_use = ClientType.CURSOR_HOOK  # 使用一个默认值
+        
         payload = RegisterPayload(
-            client_type=client_type,
             platform=platform,
             pid=pid,
+            client_type=type_to_use,
+            client_types=types_to_use,
             cursor_id=kwargs.get('cursor_id'),
             workspace=kwargs.get('workspace'),
             ws_port=kwargs.get('ws_port'),
@@ -672,6 +769,153 @@ class MessageBuilder:
         
         return Message(
             type=MessageType.AGENT_STOP_EXECUTION_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    # ========================================================================
+    # V10: Conversation ID 查询
+    # ========================================================================
+    
+    @staticmethod
+    def get_conversation_id(
+        from_id: str,
+        to_id: str
+    ) -> Message:
+        """创建查询 conversation_id 消息 (V10)"""
+        return Message(
+            type=MessageType.GET_CONVERSATION_ID,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload={}
+        )
+    
+    @staticmethod
+    def get_conversation_id_result(
+        from_id: str,
+        to_id: str,
+        success: bool,
+        conversation_id: Optional[str] = None,
+        inject_id: Optional[str] = None,
+        error: Optional[str] = None
+    ) -> Message:
+        """创建 conversation_id 查询结果消息 (V10)"""
+        payload = GetConversationIdResultPayload(
+            success=success,
+            conversation_id=conversation_id,
+            inject_id=inject_id,
+            error=error
+        )
+        
+        return Message(
+            type=MessageType.GET_CONVERSATION_ID_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    # ========================================================================
+    # Cursor 输入操作
+    # ========================================================================
+    
+    @staticmethod
+    def cursor_input_text(
+        from_id: str,
+        to_id: str,
+        text: str,
+        conversation_id: Optional[str] = None,
+        execute: bool = False
+    ) -> Message:
+        """创建向 Cursor 输入文本消息
+        
+        Args:
+            execute: 是否立即执行（按 Enter 键）
+        """
+        payload = CursorInputTextPayload(
+            text=text,
+            conversation_id=conversation_id,
+            execute=execute
+        )
+        
+        return Message(
+            type=MessageType.CURSOR_INPUT_TEXT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    @staticmethod
+    def cursor_input_text_result(
+        from_id: str,
+        to_id: str,
+        success: bool,
+        message: Optional[str] = None,
+        error: Optional[str] = None
+    ) -> Message:
+        """创建 Cursor 输入文本结果消息"""
+        payload = CursorInputTextResultPayload(
+            success=success,
+            message=message,
+            error=error
+        )
+        
+        return Message(
+            type=MessageType.CURSOR_INPUT_TEXT_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    # ========================================================================
+    # 通用 JavaScript 执行
+    # ========================================================================
+    
+    @staticmethod
+    def execute_js(
+        from_id: str,
+        to_id: str,
+        code: str,
+        request_id: Optional[str] = None
+    ) -> Message:
+        """创建执行 JavaScript 消息"""
+        payload = ExecuteJsPayload(
+            code=code,
+            request_id=request_id
+        )
+        
+        return Message(
+            type=MessageType.EXECUTE_JS,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+    
+    @staticmethod
+    def execute_js_result(
+        from_id: str,
+        to_id: str,
+        success: bool,
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+        request_id: Optional[str] = None
+    ) -> Message:
+        """创建 JavaScript 执行结果消息"""
+        payload = ExecuteJsResultPayload(
+            success=success,
+            result=result,
+            error=error,
+            request_id=request_id
+        )
+        
+        return Message(
+            type=MessageType.EXECUTE_JS_RESULT,
             from_=from_id,
             to=to_id,
             timestamp=int(time.time()),

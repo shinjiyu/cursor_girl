@@ -242,6 +242,70 @@ cat > "$MAIN_JS" << 'INJECT_END'
             }
         }
         
+        /**
+         * 通用 JavaScript 执行器（未来所有新功能都通过此实现）
+         * 这是 inject 中唯一需要添加的通用处理函数
+         */
+        async function handleExecuteJs(fromId, payload) {
+            const code = payload.code || '';
+            const requestId = payload.request_id || 'unknown';
+            
+            log(`🔧 [ExecuteJS] 收到执行请求: ${requestId.substring(0, 30)}... (from=${fromId})`);
+            
+            try {
+                // 获取 BrowserWindow
+                const electron = await import('electron');
+                const windows = electron.BrowserWindow.getAllWindows();
+                
+                if (windows.length === 0) {
+                    throw new Error('没有打开的窗口');
+                }
+                
+                const result = await windows[0].webContents.executeJavaScript(code);
+                
+                // 尝试解析结果（如果是 JSON 字符串）
+                let parsedResult;
+                try {
+                    parsedResult = JSON.parse(result);
+                } catch {
+                    parsedResult = result;
+                }
+                
+                // 发送响应
+                const response = {
+                    type: 'execute_js_result',
+                    from: injectId,
+                    to: fromId,
+                    timestamp: Math.floor(Date.now() / 1000),
+                    payload: {
+                        success: true,
+                        result: parsedResult,
+                        request_id: requestId
+                    }
+                };
+                
+                sendToCentral(response);
+                log(`✅ [ExecuteJS] 执行成功: ${requestId}`);
+                
+            } catch (error) {
+                log(`❌ [ExecuteJS] 执行错误: ${error.message}`);
+                
+                const errorResponse = {
+                    type: 'execute_js_result',
+                    from: injectId,
+                    to: fromId,
+                    timestamp: Math.floor(Date.now() / 1000),
+                    payload: {
+                        success: false,
+                        error: error.message,
+                        request_id: requestId
+                    }
+                };
+                
+                sendToCentral(errorResponse);
+            }
+        }
+        
         // 发送消息到中央Server
         function sendToCentral(message) {
             if (centralWs && centralWs.readyState === 1) {
@@ -300,6 +364,10 @@ cat > "$MAIN_JS" << 'INJECT_END'
                     
                     case 'get_conversation_id':
                         await handleGetConversationId(from, payload);
+                        break;
+                    
+                    case 'execute_js':
+                        await handleExecuteJs(from, payload);
                         break;
                     
                     case 'heartbeat_ack':
