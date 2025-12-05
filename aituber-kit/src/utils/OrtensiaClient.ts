@@ -32,6 +32,11 @@ export enum MessageType {
   // Cursor 输入操作
   CURSOR_INPUT_TEXT = 'cursor_input_text',  // 向 Cursor 输入文本（不执行）
   CURSOR_INPUT_TEXT_RESULT = 'cursor_input_text_result',  // 输入文本结果
+  
+  // Agent 事件
+  AGENT_COMPLETED = 'agent_completed',  // Agent 任务完成
+  AGENT_STATUS_CHANGED = 'agent_status_changed',  // Agent 状态变化
+  AGENT_ERROR = 'agent_error',  // Agent 错误
 }
 
 export interface OrtensiaMessage {
@@ -51,6 +56,7 @@ export class OrtensiaClient {
   private clientId: string
   private heartbeatInterval: number | null = null
   private messageHandlers: Map<MessageType, (msg: OrtensiaMessage) => void> = new Map()
+  private globalSubscribers: Set<(msg: OrtensiaMessage) => void> = new Set()
   
   // 单例模式
   private static instance: OrtensiaClient | null = null
@@ -188,6 +194,15 @@ export class OrtensiaClient {
       const message: OrtensiaMessage = JSON.parse(event.data)
       console.log('📨 [Ortensia] 收到消息:', message.type)
 
+      // 通知所有全局订阅者
+      this.globalSubscribers.forEach(subscriber => {
+        try {
+          subscriber(message)
+        } catch (error) {
+          console.error('❌ [Ortensia] 订阅者处理错误:', error)
+        }
+      })
+
       // 调用注册的处理器
       const handler = this.messageHandlers.get(message.type)
       if (handler) {
@@ -209,8 +224,12 @@ export class OrtensiaClient {
             text: message.payload.text,
             emotion: message.payload.emotion,
             audio_file: message.payload.audio_file,
-            source: message.payload.source
+            conversation_id: message.payload.conversation_id
           })
+          break
+        
+        case MessageType.AGENT_COMPLETED:
+          console.log('✅ [Ortensia] Agent 任务完成:', message.payload)
           break
         
         default:
@@ -242,6 +261,23 @@ export class OrtensiaClient {
    */
   public on(type: MessageType, handler: (msg: OrtensiaMessage) => void) {
     this.messageHandlers.set(type, handler)
+  }
+
+  /**
+   * 订阅所有消息（返回取消订阅函数）
+   */
+  public subscribe(handler: (msg: OrtensiaMessage) => void): () => void {
+    this.globalSubscribers.add(handler)
+    return () => {
+      this.globalSubscribers.delete(handler)
+    }
+  }
+
+  /**
+   * 取消订阅
+   */
+  public off(type: MessageType) {
+    this.messageHandlers.delete(type)
   }
 
   /**

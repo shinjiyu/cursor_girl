@@ -12,6 +12,7 @@ import i18next from 'i18next'
 import toastStore from '@/features/stores/toast'
 import { generateMessageId } from '@/utils/messageUtils'
 import { isMultiModalAvailable } from '@/features/constants/aiModels'
+import { useConversationStore } from '@/features/stores/conversationStore'
 
 // セッションIDを生成する関数
 const generateSessionId = () => generateMessageId()
@@ -849,10 +850,11 @@ export const handleReceiveTextFromWsFn =
     role?: string,
     emotion: EmotionType = 'neutral',
     type?: string,
-    audio_file?: string  // TTS 音频文件路径（新增）
+    audio_file?: string,  // TTS 音频文件路径
+    conversation_id?: string  // 对话ID（新增）
   ) => {
     const sessionId = generateSessionId()
-    console.log('🟡 [handleReceiveTextFromWs] Called with:', { text, role, emotion, type, audio_file, sessionId })
+    console.log('🟡 [handleReceiveTextFromWs] Called with:', { text, role, emotion, type, audio_file, conversation_id, sessionId })
     
     if (text === null || role === undefined) {
       console.log('🔴 [handleReceiveTextFromWs] Aborted: text or role is undefined')
@@ -868,6 +870,24 @@ export const handleReceiveTextFromWsFn =
     } else {
       console.log('❌ [handleReceiveTextFromWs] ExternalLinkage Mode: false - ABORTED')
       return
+    }
+
+    // 如果有 conversation_id，将消息添加到对应的 conversation
+    if (conversation_id) {
+      const conversationStore = useConversationStore.getState()
+      
+      // 获取或创建 conversation
+      console.log(`🆕 [handleReceiveTextFromWs] Getting or creating conversation: ${conversation_id}`)
+      conversationStore.getOrCreateConversation(conversation_id)
+      
+      // 添加消息到 conversation
+      conversationStore.addMessage(conversation_id, {
+        role: role === 'assistant' ? 'assistant' : role === 'user' ? 'user' : 'system',
+        content: text,
+        timestamp: Date.now()
+      })
+      
+      console.log(`✅ [handleReceiveTextFromWs] Message added to conversation ${conversation_id}`)
     }
 
     homeStore.setState({ chatProcessing: true })

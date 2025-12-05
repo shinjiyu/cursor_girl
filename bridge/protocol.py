@@ -292,9 +292,24 @@ class CursorInputTextResultPayload:
 
 @dataclass
 class ExecuteJsPayload:
-    """执行 JavaScript 的 Payload"""
+    """执行 JavaScript 的 Payload
+    
+    V11.2: 支持三种窗口定位方式
+    
+    单播模式（二选一）：
+    - window_index: 直接指定窗口索引（0, 1, 2, ...）
+    - conversation_id: inject 自动查找匹配的窗口
+    
+    广播模式：
+    - 都不指定: 广播到所有窗口
+    - conversation_id 检查逻辑可以在 JavaScript 代码中处理
+    
+    注：当前实现使用广播模式 + JS 代码内检查
+    """
     code: str  # JavaScript 代码
     request_id: Optional[str] = None  # 请求 ID（用于匹配响应）
+    window_index: Optional[int] = None  # 窗口索引（单播模式）
+    conversation_id: Optional[str] = None  # 会话 ID（单播模式，inject 自动查找）
 
 
 @dataclass
@@ -881,12 +896,22 @@ class MessageBuilder:
         from_id: str,
         to_id: str,
         code: str,
-        request_id: Optional[str] = None
+        request_id: Optional[str] = None,
+        window_index: Optional[int] = None,
+        conversation_id: Optional[str] = None
     ) -> Message:
-        """创建执行 JavaScript 消息"""
+        """创建执行 JavaScript 消息
+        
+        参数:
+        - window_index: 单播模式，直接指定窗口索引
+        - conversation_id: 单播模式，inject 自动查找窗口
+        - 都不指定: 广播模式
+        """
         payload = ExecuteJsPayload(
             code=code,
-            request_id=request_id
+            request_id=request_id,
+            window_index=window_index,
+            conversation_id=conversation_id
         )
         
         return Message(

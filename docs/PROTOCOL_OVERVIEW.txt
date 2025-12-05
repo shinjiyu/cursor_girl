@@ -1,0 +1,206 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    Ortensia WebSocket 协议架构总览
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       中央服务器 (ws://localhost:8765)                        │
+│                                                                               │
+│  功能:                                                                        │
+│  • 消息路由 (Message Routing)                                                │
+│  • TTS 音频生成 (Text-to-Speech with Google TTS)                             │
+│  • 事件广播 (Event Broadcasting)                                             │
+│  • JavaScript 动态执行调度 (Dynamic JS Execution Dispatcher)                 │
+│                                                                               │
+│  已实现协议总数: 11/26 (42%)                                                  │
+└─────┬────────────────────┬────────────────────┬──────────────────────────────┘
+      │                    │                    │
+      │                    │                    │
+      ▼                    ▼                    ▼
+┌──────────────────┐ ┌──────────────────┐ ┌────────────────────────────┐
+│   AITuber Kit    │ │  Cursor Inject   │ │    Cursor Hook (Python)    │
+│  (Next.js + TS)  │ │  (JavaScript)    │ │                            │
+│                  │ │                  │ │                            │
+│  角色:           │ │  角色:           │ │  角色:                     │
+│  • aituber       │ │  • inject        │ │  • hook-{conversation_id}  │
+│  • command       │ │                  │ │                            │
+│                  │ │  端口:           │ │  连接:                     │
+│  HTTP: 3000      │ │  • 9876 (本地调试) │ │  • ws://localhost:8765     │
+│  WebSocket:      │ │                  │ │                            │
+│  • ws://8765     │ │  WebSocket:      │ │  实现状态:                 │
+│                  │ │  • Client to     │ │  ✅ 注册连接              │
+│  实现状态:       │ │    ws://8765     │ │  ✅ AITUBER_RECEIVE_TEXT  │
+│  ✅ 多角色注册   │ │  • Server on     │ │  ⚠️  事件监听 (未完整)    │
+│  ✅ 接收事件+TTS │ │    ws://9876     │ │                            │
+│  ✅ 发送命令     │ │                  │ │  功能:                     │
+│  ✅ 聊天窗口UI   │ │  实现状态:       │ │  • 监听 Cursor 事件        │
+└──────────────────┘ │  ✅ EXECUTE_JS   │ │  • 发送到 AITuber          │
+                     │  ✅ GET_CONV_ID  │ │  • 接收命令 (规划中)       │
+                     │  ✅ 动态DOM操作  │ └────────────────────────────┘
+                     └──────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                              协议消息流示例
+═══════════════════════════════════════════════════════════════════════════════
+
+【流程 1】Cursor 事件 → AITuber 显示 + 语音播报
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. Cursor Hook 检测到事件 (例如: Shell 命令执行完成)
+     │
+     ▼
+  2. Hook → Server: AITUBER_RECEIVE_TEXT
+     {
+       "type": "aituber_receive_text",
+       "from": "hook-conv_abc123",
+       "payload": {
+         "text": "命令执行完成，文件已保存",
+         "emotion": "happy"
+       }
+     }
+     │
+     ▼
+  3. Server 处理:
+     • 调用 TTS Manager 生成音频: aituber_1733320900.wav
+     • 添加 audio_file 路径到 payload
+     │
+     ▼
+  4. Server → AITuber: AITUBER_RECEIVE_TEXT (含音频路径)
+     {
+       "payload": {
+         "text": "命令执行完成，文件已保存",
+         "emotion": "happy",
+         "audio_file": "/path/to/tts_output/aituber_1733320900.wav"
+       }
+     }
+     │
+     ▼
+  5. AITuber 处理:
+     • 显示消息到聊天窗口
+     • 请求音频: GET http://localhost:3000/api/tts-audio/aituber_1733320900.wav
+     • 播放语音
+
+
+【流程 2】AITuber 控制 Cursor 执行命令
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. 用户在 AITuber 聊天窗口输入: "列出当前目录下的所有文件"
+     │
+     ▼
+  2. AITuber → Server: CURSOR_INPUT_TEXT
+     {
+       "type": "cursor_input_text",
+       "from": "aituber-12345",
+       "to": "cursor_inject",
+       "payload": {
+         "text": "列出当前目录下的所有文件",
+         "execute": true
+       }
+     }
+     │
+     ▼
+  3. Server 处理:
+     • 查找 cursor_inject 客户端
+     • 生成 JavaScript 代码
+     • 包装成 EXECUTE_JS 消息
+     │
+     ▼
+  4. Server → Inject: EXECUTE_JS
+     {
+       "type": "execute_js",
+       "payload": {
+         "code": "(async function() { ... })()",
+         "request_id": "input_text_aituber-12345_1733320900"
+       }
+     }
+     │
+     ▼
+  5. Inject 执行:
+     • 查找 Cursor composer 输入框
+     • document.execCommand('insertText', false, text)
+     • 如果 execute=true: 点击提交按钮
+     │
+     ▼
+  6. Inject → Server: EXECUTE_JS_RESULT
+     {
+       "success": true,
+       "result": { "success": true, "message": "文本已输入并执行" }
+     }
+     │
+     ▼
+  7. Server → AITuber: CURSOR_INPUT_TEXT_RESULT
+     {
+       "success": true,
+       "message": "文本已输入到 Cursor 并点击了执行按钮"
+     }
+
+
+【流程 3】心跳保持连接
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  每 30 秒:
+  AITuber/Hook/Inject → Server: HEARTBEAT
+  Server → Client: HEARTBEAT_ACK { "server_time": 1733320900 }
+
+═══════════════════════════════════════════════════════════════════════════════
+                          协议类型分类统计
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────┬───────┬──────────────────────────────────────────┐
+│  类别                   │ 数量  │  实现状态                                │
+├─────────────────────────┼───────┼──────────────────────────────────────────┤
+│ 连接管理                │  5    │  ✅✅✅✅✅ (100%)                        │
+│ Composer 操作           │  4    │  ⚠️⚠️⚠️⚠️ (部分实现)                    │
+│ Agent 语义操作          │  4    │  ⚠️⚠️⚠️⚠️ (定义但未使用)                │
+│ 事件通知                │  3    │  ⚠️⚠️⚠️ (定义但未触发)                  │
+│ AITuber 专用            │  4    │  ✅⚠️⚠️⚠️ (1/4 实现)                    │
+│ Cursor 控制             │  2    │  ✅✅ (100%)                             │
+│ JavaScript 执行         │  2    │  ✅✅ (100%)                             │
+│ Conversation ID         │  2    │  ✅✅ (100%)                             │
+├─────────────────────────┼───────┼──────────────────────────────────────────┤
+│  总计                   │ 26    │  11 完整实现 (42%)                       │
+│                         │       │  15 部分/未使用 (58%)                    │
+└─────────────────────────┴───────┴──────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                          核心文件清单
+═══════════════════════════════════════════════════════════════════════════════
+
+协议定义:
+  📄 bridge/protocol.py                    (1027 行) - Python 协议定义
+  📄 docs/WEBSOCKET_PROTOCOL.md            (638 行)  - 完整协议规范
+  📄 docs/AITUBER_PROTOCOL.md              (新)      - AITuber 专用协议
+  📄 docs/PROTOCOL_SUMMARY.md              (新)      - 协议总览
+
+服务端实现:
+  📄 bridge/websocket_server.py            (1025 行) - 中央服务器
+  📄 bridge/tts_manager.py                 - TTS 音频生成
+
+客户端实现:
+  📄 aituber-kit/src/utils/OrtensiaClient.ts  (270 行)  - AITuber WebSocket 客户端
+  📄 aituber-kit/src/pages/assistant.tsx      (400+ 行) - AITuber 聊天 UI
+  📄 cursor-injector/install-v10.sh            (503 行)  - Cursor Inject 注入代码
+  📄 cursor-hooks/lib/agent_hook_handler.py   - Cursor Hook 事件监听
+
+═══════════════════════════════════════════════════════════════════════════════
+                          端口使用
+═══════════════════════════════════════════════════════════════════════════════
+
+  8765  - 中央服务器 WebSocket (所有客户端连接)
+  9876  - Cursor Inject 本地调试 WebSocket (仅开发时)
+  3000  - AITuber HTTP 服务 (Next.js + TTS 音频服务)
+
+═══════════════════════════════════════════════════════════════════════════════
+                          快速参考
+═══════════════════════════════════════════════════════════════════════════════
+
+查看完整协议列表:
+  → docs/PROTOCOL_SUMMARY.md
+
+查看 AITuber 详细协议:
+  → docs/AITUBER_PROTOCOL.md
+
+查看完整协议规范:
+  → docs/WEBSOCKET_PROTOCOL.md
+
+查看代码实现:
+  → bridge/protocol.py (Python 数据类定义)
+  → bridge/websocket_server.py (消息处理逻辑)
+
+═══════════════════════════════════════════════════════════════════════════════

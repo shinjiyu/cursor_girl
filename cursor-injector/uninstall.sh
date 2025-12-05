@@ -23,7 +23,7 @@ echo ""
 CURSOR_APP="/Applications/Cursor.app"
 CURSOR_RESOURCES="$CURSOR_APP/Contents/Resources/app"
 MAIN_JS="$CURSOR_RESOURCES/out/main.js"
-BACKUP_JS="$MAIN_JS.backup"
+BACKUP_JS="$MAIN_JS.ortensia.backup"
 INJECTOR_JS="$CURSOR_RESOURCES/out/ortensia-injector.js"
 
 # 检查

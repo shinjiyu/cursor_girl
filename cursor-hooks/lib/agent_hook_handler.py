@@ -177,7 +177,6 @@ class AgentHookHandler:
                                 "workspace": workspace,
                                 "workspace_name": workspace_name,
                                 "conversation_id": conversation_id
-                                # V10: 不再需要 inject_id，服务器通过 conversation_id 关联
                             }
                         }
                         

@@ -1,5 +1,5 @@
 #!/bin/bash
-# V10: 添加 get_conversation_id 协议，支持通过 conversation_id 关联 inject 和 hook
+# V11.2: 支持广播/单播两种模式，当前使用广播模式 + JS 代码内检查
 
 MAIN_JS="/Applications/Cursor.app/Contents/Resources/app/out/main.js"
 BACKUP_JS="/Applications/Cursor.app/Contents/Resources/app/out/main.js.ortensia.backup"
@@ -25,7 +25,7 @@ ORIGINAL=$(cat "$BACKUP_JS")
 # 创建新 main.js
 cat > "$MAIN_JS" << 'INJECT_END'
 // ============================================================================
-// ORTENSIA V10: 添加 get_conversation_id 协议
+// ORTENSIA V11.2: 支持广播/单播协议，当前使用广播 + JS 代码内检查
 // ============================================================================
 (async function() {
     const fs = await import('fs');
@@ -133,6 +133,9 @@ cat > "$MAIN_JS" << 'INJECT_END'
         
         let centralWs = null;
         let injectId = `inject-${process.pid}`;
+        
+        // V11: 不再需要设置 ORTENSIA_INJECT_ID
+        
         let heartbeatInterval = null;
         let reconnectTimeout = null;
         let reconnectDelay = 1000;
@@ -192,65 +195,23 @@ cat > "$MAIN_JS" << 'INJECT_END'
             }
         }
         
-        // ====================================================================
-        // V10 新增：处理 get_conversation_id 命令
-        // ====================================================================
-        
-        async function handleGetConversationId(fromId, payload) {
-            log(`🔍 [ConversationID] 收到查询请求: from=${fromId}`);
-            
-            try {
-                const conversationId = await getCurrentConversationId();
-                
-                const response = {
-                    type: 'get_conversation_id_result',
-                    from: injectId,
-                    to: fromId,
-                    timestamp: Math.floor(Date.now() / 1000),
-                    payload: {
-                        success: conversationId !== null,
-                        conversation_id: conversationId,
-                        inject_id: injectId,
-                        workspace: await getWorkspacePath()
-                    }
-                };
-                
-                sendToCentral(response);
-                
-                if (conversationId) {
-                    log(`✅ [ConversationID] 返回: ${conversationId}`);
-                } else {
-                    log(`⚠️  [ConversationID] 未找到当前对话`);
-                }
-                
-            } catch (error) {
-                log(`❌ [ConversationID] 处理错误: ${error.message}`);
-                
-                const errorResponse = {
-                    type: 'get_conversation_id_result',
-                    from: injectId,
-                    to: fromId,
-                    timestamp: Math.floor(Date.now() / 1000),
-                    payload: {
-                        success: false,
-                        conversation_id: null,
-                        error: error.message
-                    }
-                };
-                
-                sendToCentral(errorResponse);
-            }
-        }
-        
         /**
-         * 通用 JavaScript 执行器（未来所有新功能都通过此实现）
-         * 这是 inject 中唯一需要添加的通用处理函数
+         * V11.2: 通用 JavaScript 执行器
+         * 
+         * 支持三种模式：
+         *   1. window_index（数字）：单播，直接指定窗口
+         *   2. conversation_id（字符串）：单播，自动查找匹配的窗口
+         *   3. 都不指定：广播到所有窗口
+         * 
+         * 注：当前实现使用广播模式 + JS 代码内检查
          */
         async function handleExecuteJs(fromId, payload) {
             const code = payload.code || '';
             const requestId = payload.request_id || 'unknown';
+            const windowIndex = payload.window_index;
+            const conversationId = payload.conversation_id;
             
-            log(`🔧 [ExecuteJS] 收到执行请求: ${requestId.substring(0, 30)}... (from=${fromId})`);
+            log(`🔧 [ExecuteJS] 收到执行请求: ${requestId.substring(0, 30)}... (from=${fromId}, window_index=${windowIndex}, conversation_id=${conversationId ? conversationId.substring(0, 8) : 'null'})`);
             
             try {
                 // 获取 BrowserWindow
@@ -261,7 +222,70 @@ cat > "$MAIN_JS" << 'INJECT_END'
                     throw new Error('没有打开的窗口');
                 }
                 
-                const result = await windows[0].webContents.executeJavaScript(code);
+                let result;
+                let targetIndex = null;
+                
+                // 优先级 1: 如果指定了 window_index，直接使用（单播模式）
+                if (windowIndex !== null && windowIndex !== undefined) {
+                    if (windowIndex < 0 || windowIndex >= windows.length) {
+                        throw new Error('窗口索引超出范围: ' + windowIndex + ' (总共 ' + windows.length + ' 个窗口)');
+                    }
+                    targetIndex = windowIndex;
+                    log('📍 [单播-索引] 使用窗口 [' + targetIndex + ']');
+                }
+                // 优先级 2: 如果指定了 conversation_id，查找匹配的窗口（单播模式）
+                else if (conversationId) {
+                    log('🔍 [单播-查找] 查找 conversation_id: ' + conversationId);
+                    
+                    const extractConvIdCode = '(() => { const el = document.querySelector(\'[id^="composer-bottom-add-context-"]\'); if (!el) return JSON.stringify({ found: false }); const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/); return JSON.stringify({ found: true, conversation_id: match ? match[1] : null }); })()';
+                    
+                    for (let i = 0; i < windows.length; i++) {
+                        try {
+                            const convResult = await windows[i].webContents.executeJavaScript(extractConvIdCode);
+                            const convData = JSON.parse(convResult);
+                            const windowConvId = convData.found && convData.conversation_id ? convData.conversation_id : null;
+                            
+                            log('  窗口 [' + i + ']: conversation_id = ' + windowConvId);
+                            
+                            if (windowConvId === conversationId) {
+                                targetIndex = i;
+                                log('✅ [单播-查找] 找到匹配窗口: [' + i + ']');
+                                break;
+                            }
+                        } catch (err) {
+                            log('  ⚠️  窗口 [' + i + '] 查询失败: ' + err.message);
+                        }
+                    }
+                    
+                    if (targetIndex === null) {
+                        throw new Error('未找到 conversation_id 为 ' + conversationId + ' 的窗口');
+                    }
+                }
+                
+                // 执行逻辑
+                if (targetIndex !== null) {
+                    // 单播模式：只在指定窗口执行
+                    log('📍 [单播执行] 窗口 [' + targetIndex + ']');
+                    const targetWindow = windows[targetIndex];
+                    result = await targetWindow.webContents.executeJavaScript(code);
+                } else {
+                    // 广播模式：在所有窗口执行，返回字典
+                    log('📢 [广播模式] 在所有 ' + windows.length + ' 个窗口执行');
+                    const results = {};
+                    
+                    for (let i = 0; i < windows.length; i++) {
+                        try {
+                            const windowResult = await windows[i].webContents.executeJavaScript(code);
+                            results[i] = windowResult;
+                            log('  ✅ 窗口 [' + i + '] 执行成功');
+                        } catch (err) {
+                            results[i] = { error: err.message };
+                            log('  ❌ 窗口 [' + i + '] 执行失败: ' + err.message);
+                        }
+                    }
+                    
+                    result = results;
+                }
                 
                 // 尝试解析结果（如果是 JSON 字符串）
                 let parsedResult;
@@ -360,10 +384,6 @@ cat > "$MAIN_JS" << 'INJECT_END'
                 switch (type) {
                     case 'register_ack':
                         log(`✅ [中央] 注册成功`);
-                        break;
-                    
-                    case 'get_conversation_id':
-                        await handleGetConversationId(from, payload);
                         break;
                     
                     case 'execute_js':
@@ -489,10 +509,12 @@ cat "$BACKUP_JS" >> "$MAIN_JS"
 echo ""
 echo "✅ Ortensia V10 安装完成！"
 echo ""
-echo "新功能："
-echo "  🆕 支持 get_conversation_id 协议"
-echo "  🆕 Hook 可以使用 conversation_id 作为 ID"
-echo "  🆕 服务器可以通过 conversation_id 关联 inject 和 hook"
+echo "V11.2 新功能："
+echo "  📡 支持三种窗口定位模式："
+echo "     • window_index: 单播，直接指定窗口索引"
+echo "     • conversation_id: 单播，inject 自动查找窗口"
+echo "     • 都不指定: 广播到所有窗口"
+echo "  🎯 当前使用：广播模式 + JS 代码内检查"
 echo ""
 echo "请重启 Cursor 以使更改生效"
 echo ""

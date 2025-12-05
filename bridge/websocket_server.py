@@ -197,25 +197,8 @@ class ClientRegistry:
         return None
     
     # ============================================================
-    # V10: Conversation ID 映射管理
+    # V11: 移除映射管理，改用动态查询
     # ============================================================
-    
-    def register_conversation_inject_mapping(self, conversation_id: str, inject_id: str):
-        """注册 conversation_id 到 inject_id 的映射"""
-        self.conversation_id_to_inject_id[conversation_id] = inject_id
-        self.inject_id_to_conversation_id[inject_id] = conversation_id
-        logger.info(f"🗺️  V10 映射: {conversation_id} ↔ {inject_id}")
-    
-    def get_inject_by_conversation_id(self, conversation_id: str) -> Optional[str]:
-        """根据 conversation_id 获取对应的 inject_id"""
-        inject_id = self.conversation_id_to_inject_id.get(conversation_id)
-        if inject_id and inject_id in self.clients:
-            return inject_id
-        return None
-    
-    def get_conversation_id_by_inject(self, inject_id: str) -> Optional[str]:
-        """根据 inject_id 获取对应的 conversation_id"""
-        return self.inject_id_to_conversation_id.get(inject_id)
     
     def get_stats(self) -> dict:
         """获取统计信息"""
@@ -300,13 +283,6 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         
         elif msg_type == MessageType.AITUBER_STATUS:
             await route_message(message)
-        
-        # V10: Conversation ID 操作
-        elif msg_type == MessageType.GET_CONVERSATION_ID:
-            await route_message(message)  # 转发给指定的 inject
-        
-        elif msg_type == MessageType.GET_CONVERSATION_ID_RESULT:
-            await handle_get_conversation_id_result(client_info, message)
         
         # Cursor 输入操作
         elif msg_type == MessageType.CURSOR_INPUT_TEXT:
@@ -397,6 +373,8 @@ async def handle_register(client_info: ClientInfo, message: Message):
     )
     
     await client_info.websocket.send(ack_msg.to_json())
+    
+    # V11: 不再主动请求 conversation_id，改用动态查询
 
 
 async def handle_heartbeat(client_info: ClientInfo, message: Message):
@@ -472,6 +450,8 @@ async def handle_agent_stop_execution(client_info: ClientInfo, message: Message)
 async def handle_aituber_receive_text(client_info: ClientInfo, message: Message):
     """处理 Hook 发来的 aituber_receive_text 消息
     
+    V11: 移除映射管理，改用动态查询
+    
     功能：
     1. 生成 TTS 音频（如果 TTS 可用）
     2. 将消息（含音频）转发给所有 AITuber 客户端
@@ -483,8 +463,9 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     4. 转发给所有 AITuber 客户端
     """
     hook_id = message.from_
+    payload = message.payload
     
-    # 1. 从 hook ID 提取 conversation_id（用于日志）
+    # 1. 从 hook ID 提取 conversation_id
     conversation_id = "unknown"
     if hook_id.startswith("hook-"):
         conversation_id = hook_id[5:]
@@ -498,8 +479,7 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
         logger.warning(f"⚠️  目标客户端不存在: aituber")
         return
     
-    # 3. 生成 TTS 音频（如果 TTS 可用）
-    payload = message.payload
+    # 4. 生成 TTS 音频（如果 TTS 可用）
     text = payload.get('text', '')
     emotion = payload.get('emotion', 'neutral')
     
@@ -522,7 +502,10 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
             logger.error(f"❌ TTS 生成失败: {e}")
             # TTS 失败不影响消息转发，继续执行
     
-    # 4. 转发给所有 AITuber 客户端
+    # ✨ 将 conversation_id 添加到 payload 中
+    message.payload['conversation_id'] = conversation_id
+    
+    # 5. 转发给所有 AITuber 客户端
     for aituber in aituber_clients:
         try:
             await aituber.websocket.send(message.to_json())
@@ -531,48 +514,25 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
             logger.error(f"❌ [AITuber] 转发失败: {aituber.client_id}, {e}")
 
 
-async def handle_get_conversation_id_result(client_info: ClientInfo, message: Message):
-    """V10: 处理 inject 返回的 conversation_id 结果
-    
-    当 inject 返回 conversation_id 后，建立映射关系
-    """
-    payload = message.payload
-    success = payload.get('success', False)
-    conversation_id = payload.get('conversation_id')
-    inject_id = payload.get('inject_id') or message.from_
-    
-    if success and conversation_id:
-        # 建立映射
-        registry.register_conversation_inject_mapping(conversation_id, inject_id)
-        logger.info(f"✅ [V10] 映射已建立: {conversation_id} ↔ {inject_id}")
-    else:
-        error = payload.get('error', '未知错误')
-        logger.warning(f"⚠️  [V10] Inject {inject_id} 无法提供 conversation_id: {error}")
-
-
 async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
     """处理从 AITuber 发来的 cursor_input_text 消息
     
-    功能：将文本发送到 Cursor inject，通过动态执行 JS 代码来输入到输入框（不执行）
-    
-    工作流程:
-    1. 生成 JavaScript 代码来操作 Cursor 的输入框
-    2. 发送 execute_js 消息给 inject
+    V11.2: 生成包含 conversation_id 检查的 JavaScript 代码，广播到所有窗口
+    只有匹配的窗口会真正执行输入操作
     """
     from_id = message.from_
     text = message.payload.get('text', '')
     conversation_id = message.payload.get('conversation_id')
-    execute = message.payload.get('execute', False)  # 是否执行
+    execute = message.payload.get('execute', False)
     
     action_text = "输入并执行" if execute else "输入"
-    logger.info(f"📝 [Cursor Input] 收到{action_text}请求: {text[:50]}... (from: {from_id})")
+    logger.info(f"📝 [Cursor Input] 收到{action_text}请求: {text[:50]}... (conv: {conversation_id})")
     
     # 获取所有 cursor_inject 客户端
     inject_clients = registry.get_by_type('cursor_inject')
     
     if not inject_clients:
         logger.warning(f"⚠️  没有可用的 Cursor inject 客户端")
-        # 发送失败响应
         error_msg = MessageBuilder.cursor_input_text_result(
             from_id="server",
             to_id=from_id,
@@ -582,23 +542,50 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
         await client_info.websocket.send(error_msg.to_json())
         return
     
-    # 如果指定了 conversation_id，尝试找到对应的 inject
-    target_inject = None
-    if conversation_id:
-        target_inject = registry.get_inject_by_conversation_id(conversation_id)
-    
-    # 如果没有找到特定的 inject，使用第一个可用的
-    if not target_inject and inject_clients:
-        target_inject = inject_clients[0]
+    # 使用第一个可用的 inject（一般情况下只有一个）
+    target_inject = inject_clients[0]
     
     if target_inject:
         try:
             # 生成 JavaScript 代码来输入文本
-            # 使用模拟键盘输入的方式，适用于 Lexical 等复杂编辑器
+            # V11.2: 代码包含 conversation_id 检查，只在匹配的窗口执行
             import json
+            
+            # 如果指定了 conversation_id，添加检查逻辑
+            conv_check_code = ""
+            if conversation_id:
+                conv_check_code = f"""
+                    // 🔍 检查当前窗口的 conversation_id
+                    const expectedConvId = {json.dumps(conversation_id)};
+                    const convElement = document.querySelector('[id^="composer-bottom-add-context-"]');
+                    
+                    if (!convElement) {{
+                        return JSON.stringify({{
+                            skipped: true,
+                            reason: '未找到 conversation_id 元素'
+                        }});
+                    }}
+                    
+                    const match = convElement.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+                    const currentConvId = match ? match[1] : null;
+                    
+                    if (currentConvId !== expectedConvId) {{
+                        return JSON.stringify({{
+                            skipped: true,
+                            reason: 'conversation_id 不匹配',
+                            expected: expectedConvId,
+                            current: currentConvId
+                        }});
+                    }}
+                    
+                    // ✅ conversation_id 匹配，继续执行
+                """
+            
             js_code = f"""
             (async function() {{
                 try {{
+                    {conv_check_code}
+                    
                     // 查找 Composer 输入框
                     const inputSelector = 'div[contenteditable="true"][role="textbox"],' +
                                          'div[contenteditable="true"][aria-label*="composer"],' +
@@ -720,12 +707,14 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
             }})()
             """
             
-            # 发送 execute_js 消息给 inject
+            # 发送 execute_js 消息给 inject（广播模式，不指定任何窗口参数）
+            # V11.2: conversation_id 检查逻辑已在 js_code 中，无需传递给 inject
             execute_msg = MessageBuilder.execute_js(
                 from_id="server",
                 to_id=target_inject.client_id,
                 code=js_code,
                 request_id=f"input_text_{from_id}_{int(time.time())}"
+                # 不传递 window_index 和 conversation_id，让 inject 广播到所有窗口
             )
             
             await target_inject.websocket.send(execute_msg.to_json())

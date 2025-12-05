@@ -11,9 +11,9 @@ let tray
 
 // 悬浮窗配置
 const WINDOW_CONFIG = {
-  width: 400,        // 窗口宽度
+  width: 800,        // 窗口宽度（增加一倍）
   height: 600,       // 窗口高度
-  minWidth: 300,     // 最小宽度
+  minWidth: 600,     // 最小宽度
   minHeight: 400,    // 最小高度
 }
 
@@ -33,13 +33,14 @@ async function createAssistantWindow() {
     y: y,
     show: false,
     
-    // 透明悬浮窗关键配置
+    // 半透明悬浮窗配置
     transparent: true,           // 背景透明
     frame: false,                // 无边框
     alwaysOnTop: true,           // 始终置顶
-    skipTaskbar: true,           // 不显示在任务栏
-    hasShadow: false,            // 无阴影
+    skipTaskbar: false,          // 显示在任务栏（方便切换）
+    hasShadow: true,             // 有阴影（增强视觉效果）
     resizable: true,             // 允许调整大小
+    opacity: 0.95,               // 半透明效果
     
     webPreferences: {
       nodeIntegration: false,

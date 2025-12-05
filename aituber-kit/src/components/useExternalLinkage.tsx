@@ -12,7 +12,8 @@ interface TmpMessage {
   role: string
   emotion: EmotionType
   type: string
-  audio_file?: string  // TTS 音频文件路径（新增）
+  audio_file?: string  // TTS 音频文件路径
+  conversation_id?: string  // 对话ID（新增）
 }
 
 interface Params {
@@ -21,50 +22,21 @@ interface Params {
     role?: string,
     emotion?: EmotionType,
     type?: string,
-    audio_file?: string  // TTS 音频文件路径（新增）
+    audio_file?: string,  // TTS 音频文件路径
+    conversation_id?: string  // 对话ID（新增）
   ) => Promise<void>
 }
 
 const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
   const { t } = useTranslation()
   const externalLinkageMode = settingsStore((s) => s.externalLinkageMode)
-  const [receivedMessages, setTmpMessages] = useState<TmpMessage[]>([])
   const ortensiaClientRef = useRef<OrtensiaClient | null>(null)
-
-  const processMessage = useCallback(
-    async (message: TmpMessage) => {
-      console.log('🟢 [useExternalLinkage] Processing message:', {
-        text: message.text,
-        role: message.role,
-        emotion: message.emotion,
-        type: message.type,
-        audio_file: message.audio_file
-      })
-      await handleReceiveTextFromWs(
-        message.text,
-        message.role,
-        message.emotion,
-        message.type,
-        message.audio_file
-      )
-    },
-    [handleReceiveTextFromWs]
-  )
-
+  const handleReceiveRef = useRef(handleReceiveTextFromWs)
+  
+  // 保持 ref 更新
   useEffect(() => {
-    if (receivedMessages.length > 0) {
-      const message = receivedMessages[0]
-      if (
-        message.role === 'output' ||
-        message.role === 'executing' ||
-        message.role === 'console'
-      ) {
-        message.role = 'code'
-      }
-      setTmpMessages((prev) => prev.slice(1))
-      processMessage(message)
-    }
-  }, [receivedMessages, processMessage])
+    handleReceiveRef.current = handleReceiveTextFromWs
+  }, [handleReceiveTextFromWs])
 
   useEffect(() => {
     const ss = settingsStore.getState()
@@ -74,8 +46,8 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     const client = new OrtensiaClient()
     ortensiaClientRef.current = client
 
-    // 注册消息处理器
-    client.on(MessageType.AITUBER_RECEIVE_TEXT, (msg: OrtensiaMessage) => {
+    // 注册消息处理器 - 直接处理消息，不使用状态队列
+    client.on(MessageType.AITUBER_RECEIVE_TEXT, async (msg: OrtensiaMessage) => {
       console.log('📨 [Ortensia] 收到文本消息:', msg.payload)
       
       const tmpMessage: TmpMessage = {
@@ -84,9 +56,37 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
         emotion: (msg.payload.emotion || 'neutral') as EmotionType,
         type: msg.payload.type || 'text',
         audio_file: msg.payload.audio_file,
+        conversation_id: msg.payload.conversation_id,  // 提取 conversation_id
       }
       
-      setTmpMessages((prevMessages) => [...prevMessages, tmpMessage])
+      console.log('🟢 [useExternalLinkage] Processing message:', {
+        text: tmpMessage.text,
+        role: tmpMessage.role,
+        emotion: tmpMessage.emotion,
+        type: tmpMessage.type,
+        audio_file: tmpMessage.audio_file,
+        conversation_id: tmpMessage.conversation_id
+      })
+      
+      // 转换角色名称
+      let processedRole = tmpMessage.role
+      if (
+        tmpMessage.role === 'output' ||
+        tmpMessage.role === 'executing' ||
+        tmpMessage.role === 'console'
+      ) {
+        processedRole = 'code'
+      }
+      
+      // 直接处理消息，避免状态更新死循环
+      await handleReceiveRef.current(
+        tmpMessage.text,
+        processedRole,
+        tmpMessage.emotion,
+        tmpMessage.type,
+        tmpMessage.audio_file,
+        tmpMessage.conversation_id
+      )
     })
 
     // 连接到中央服务器
