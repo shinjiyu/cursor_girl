@@ -296,7 +296,17 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
             await route_message(message)  # 转发给 inject
         
         elif msg_type == MessageType.EXECUTE_JS_RESULT:
-            await route_message(message)  # 结果转发回发送者
+            # 检查是否是 discovery 请求的结果
+            if not await handle_execute_js_result_for_discovery(message):
+                # 不是 discovery 请求，正常转发
+                await route_message(message)
+        
+        # Conversation 发现（V11.3 新增）
+        elif msg_type == MessageType.GET_CONVERSATION_ID:
+            await handle_get_conversation_id(client_info, message)
+        
+        elif msg_type == MessageType.GET_CONVERSATION_ID_RESULT:
+            await route_message(message)  # 结果转发回发送者（通常是 AITuber）
         
         else:
             logger.warning(f"⚠️  未知消息类型: {msg_type.value}")
@@ -749,6 +759,192 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
             error="找不到目标 Cursor inject"
         )
         await client_info.websocket.send(error_msg.to_json())
+
+
+async def handle_get_conversation_id(client_info: ClientInfo, message: Message):
+    """
+    处理 GET_CONVERSATION_ID 请求（V11.3 新增）
+    通过生成 JavaScript 代码来查询所有窗口的 conversation_id
+    """
+    from_id = message.from_
+    request_id = message.payload.get('request_id', f"discover_{int(time.time())}")
+    
+    logger.info(f"🔍 [Discovery] 收到 conversation_id 查询请求: {request_id} (from={from_id})")
+    
+    # 找到一个 inject 客户端
+    inject_clients = registry.get_by_type("cursor_inject")
+    
+    if not inject_clients:
+        logger.warning(f"⚠️  找不到 Cursor inject 客户端")
+        # 返回空结果
+        error_msg = MessageBuilder.get_conversation_id_result(
+            from_id="server",
+            to_id=from_id,
+            request_id=request_id,
+            success=False,
+            conversation_id=None,
+            error="没有可用的 Cursor inject"
+        )
+        await client_info.websocket.send(error_msg.to_json())
+        return
+    
+    # 使用第一个 inject 客户端（广播模式）
+    target_inject = inject_clients[0]
+    
+    # 生成 JavaScript 代码来查询所有窗口的 conversation_id
+    js_code = """
+    (async function() {
+        const electron = await import('electron');
+        const windows = electron.BrowserWindow.getAllWindows();
+        
+        if (windows.length === 0) {
+            return JSON.stringify({
+                success: false,
+                conversations: [],
+                error: '没有打开的窗口'
+            });
+        }
+        
+        const results = [];
+        const extractConvIdCode = `(() => {
+            const el = document.querySelector('[id^="composer-bottom-add-context-"]');
+            if (!el) return null;
+            const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+            return match ? match[1] : null;
+        })()`;
+        
+        for (let i = 0; i < windows.length; i++) {
+            try {
+                const conversationId = await windows[i].webContents.executeJavaScript(extractConvIdCode);
+                if (conversationId) {
+                    results.push({
+                        conversation_id: conversationId,
+                        window_index: i
+                    });
+                }
+            } catch (err) {
+                // 忽略查询失败的窗口
+            }
+        }
+        
+        return JSON.stringify({
+            success: true,
+            conversations: results,
+            total_windows: windows.length
+        });
+    })()
+    """
+    
+    # 通过 EXECUTE_JS 发送
+    execute_msg = MessageBuilder.execute_js(
+        from_id="server",
+        to_id=target_inject.client_id,
+        code=js_code,
+        request_id=f"get_conv_id_{request_id}",
+        window_index=None,
+        conversation_id=None
+    )
+    
+    # 存储原始请求者信息，用于转发结果
+    # 使用 request_id 作为 key，存储发送者信息
+    if not hasattr(handle_get_conversation_id, 'pending_requests'):
+        handle_get_conversation_id.pending_requests = {}
+    
+    handle_get_conversation_id.pending_requests[f"get_conv_id_{request_id}"] = {
+        'requester_id': from_id,
+        'original_request_id': request_id
+    }
+    
+    await target_inject.websocket.send(execute_msg.to_json())
+    logger.info(f"📤 [Discovery] 已发送查询脚本到 inject: {target_inject.client_id}")
+
+
+async def handle_execute_js_result_for_discovery(message: Message):
+    """
+    处理 conversation_id 查询的结果
+    """
+    request_id = message.payload.get('request_id', '')
+    
+    # 检查是否是 discovery 请求的结果
+    if not request_id.startswith('get_conv_id_'):
+        return False
+    
+    if not hasattr(handle_get_conversation_id, 'pending_requests'):
+        return False
+    
+    pending = handle_get_conversation_id.pending_requests.get(request_id)
+    if not pending:
+        return False
+    
+    # 移除待处理请求
+    del handle_get_conversation_id.pending_requests[request_id]
+    
+    requester_id = pending['requester_id']
+    original_request_id = pending['original_request_id']
+    
+    # 解析结果
+    success = message.payload.get('success', False)
+    result_str = message.payload.get('result', '{}')
+    
+    logger.info(f"📨 [Discovery] 收到查询结果: success={success}")
+    
+    if not success:
+        # 执行失败
+        error_msg = MessageBuilder.get_conversation_id_result(
+            from_id="server",
+            to_id=requester_id,
+            request_id=original_request_id,
+            success=False,
+            conversation_id=None,
+            error=message.payload.get('error', '查询失败')
+        )
+        
+        requester = registry.get_by_id(requester_id)
+        if requester:
+            await requester.websocket.send(error_msg.to_json())
+        return True
+    
+    # 解析返回的 JSON
+    try:
+        import json
+        result_data = json.loads(result_str)
+        conversations = result_data.get('conversations', [])
+        
+        logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话")
+        
+        # 为每个 conversation_id 发送一个结果消息
+        requester = registry.get_by_id(requester_id)
+        if requester:
+            for conv in conversations:
+                conv_id = conv.get('conversation_id')
+                window_index = conv.get('window_index')
+                
+                result_msg = MessageBuilder.get_conversation_id_result(
+                    from_id="server",
+                    to_id=requester_id,
+                    request_id=original_request_id,
+                    success=True,
+                    conversation_id=conv_id,
+                    window_index=window_index
+                )
+                await requester.websocket.send(result_msg.to_json())
+                logger.info(f"  📤 发送结果: {conv_id} (window {window_index})")
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Discovery] 解析结果失败: {e}")
+        error_msg = MessageBuilder.get_conversation_id_result(
+            from_id="server",
+            to_id=requester_id,
+            request_id=original_request_id,
+            success=False,
+            conversation_id=None,
+            error=f"解析结果失败: {str(e)}"
+        )
+        requester = registry.get_by_id(requester_id)
+        if requester:
+            await requester.websocket.send(error_msg.to_json())
+        return True
 
 
 async def route_message(message: Message):
