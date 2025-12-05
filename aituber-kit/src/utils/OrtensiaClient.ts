@@ -33,6 +33,10 @@ export enum MessageType {
   CURSOR_INPUT_TEXT = 'cursor_input_text',  // 向 Cursor 输入文本（不执行）
   CURSOR_INPUT_TEXT_RESULT = 'cursor_input_text_result',  // 输入文本结果
   
+  // Conversation 发现
+  GET_CONVERSATION_ID = 'get_conversation_id',  // 查询 conversation_id
+  GET_CONVERSATION_ID_RESULT = 'get_conversation_id_result',  // conversation_id 查询结果
+  
   // Agent 事件
   AGENT_COMPLETED = 'agent_completed',  // Agent 任务完成
   AGENT_STATUS_CHANGED = 'agent_status_changed',  // Agent 状态变化
@@ -337,6 +341,25 @@ export class OrtensiaClient {
     this.send(message)
     const actionText = execute ? '输入并执行' : '输入'
     console.log(`⌨️  [Ortensia] ${actionText}文本到 Cursor:`, text.substring(0, 50))
+  }
+
+  /**
+   * 🆕 发现已存在的 Cursor 对话
+   * 向所有 Cursor Inject 广播请求，获取当前的 conversation_id
+   */
+  public discoverExistingConversations() {
+    const message: OrtensiaMessage = {
+      type: MessageType.GET_CONVERSATION_ID,
+      from: this.clientId,
+      to: 'cursor_inject',  // 广播给所有 inject 客户端
+      timestamp: Date.now(),
+      payload: {
+        request_id: `discover_${Date.now()}`,
+      },
+    }
+
+    this.send(message)
+    console.log('🔍 [Ortensia] 正在发现已存在的 Cursor 对话...')
   }
 
   /**

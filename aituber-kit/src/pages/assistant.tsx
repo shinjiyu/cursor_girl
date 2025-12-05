@@ -99,6 +99,11 @@ export default function AssistantPage() {
       if (message.type === MessageType.AGENT_COMPLETED) {
         handleAgentCompleted(message)
       }
+      
+      // 🆕 处理 GET_CONVERSATION_ID_RESULT（发现已存在的对话）
+      if (message.type === MessageType.GET_CONVERSATION_ID_RESULT) {
+        handleConversationDiscovered(message)
+      }
     })
     
     return () => unsubscribe()
@@ -187,6 +192,30 @@ export default function AssistantPage() {
       autoChecker.recordCheck(convId)
     }, 1000)
   }, [conversationStore, autoChecker])
+  
+  // 🆕 处理发现的对话
+  const handleConversationDiscovered = useCallback((message: OrtensiaMessage) => {
+    const { conversation_id, success } = message.payload
+    
+    if (!success || !conversation_id) {
+      console.log('⚠️  [Discovery] 未找到有效的 conversation_id')
+      return
+    }
+    
+    // 创建对话 tab（如果不存在）
+    const conv = conversationStore.getOrCreateConversation(conversation_id)
+    
+    // 如果是新创建的对话，添加一条欢迎消息
+    if (conv.messages.length === 0) {
+      conversationStore.addMessage(conversation_id, {
+        role: 'system',
+        content: `✅ 已连接到 Cursor 对话: ${conversation_id.substring(0, 8)}...`,
+        timestamp: Date.now()
+      })
+    }
+    
+    console.log(`🔍 [Discovery] 发现对话: ${conversation_id}`)
+  }, [conversationStore])
 
   // 鼠标悬停时显示控制按钮
   const handleMouseEnter = () => {
