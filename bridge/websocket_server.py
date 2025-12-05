@@ -884,9 +884,9 @@ async def handle_execute_js_result_for_discovery(message: Message):
     
     # 解析结果
     success = message.payload.get('success', False)
-    result_str = message.payload.get('result', '{}')
+    result_data = message.payload.get('result', {})  # 已经是 dict，不需要 json.loads()
     
-    logger.info(f"📨 [Discovery] 收到查询结果: success={success}")
+    logger.info(f"📨 [Discovery] 收到查询结果: success={success}, type={type(result_data)}")
     
     if not success:
         # 执行失败
@@ -904,11 +904,9 @@ async def handle_execute_js_result_for_discovery(message: Message):
             await requester.websocket.send(error_msg.to_json())
         return True
     
-    # 解析返回的 JSON
+    # 提取 conversations
     try:
-        import json
-        result_data = json.loads(result_str)
-        conversations = result_data.get('conversations', [])
+        conversations = result_data.get('conversations', []) if isinstance(result_data, dict) else []
         
         logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话")
         

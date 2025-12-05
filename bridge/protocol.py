@@ -272,6 +272,8 @@ class GetConversationIdResultPayload:
     conversation_id: Optional[str] = None
     inject_id: Optional[str] = None  # 返回 inject 自己的 ID
     error: Optional[str] = None
+    request_id: Optional[str] = None  # 请求 ID（用于匹配请求）
+    window_index: Optional[int] = None  # 窗口索引
 
 
 @dataclass
@@ -815,14 +817,18 @@ class MessageBuilder:
         success: bool,
         conversation_id: Optional[str] = None,
         inject_id: Optional[str] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        request_id: Optional[str] = None,
+        window_index: Optional[int] = None
     ) -> Message:
         """创建 conversation_id 查询结果消息 (V10)"""
         payload = GetConversationIdResultPayload(
             success=success,
             conversation_id=conversation_id,
             inject_id=inject_id,
-            error=error
+            error=error,
+            request_id=request_id,
+            window_index=window_index
         )
         
         return Message(
