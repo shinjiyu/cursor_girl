@@ -94,11 +94,7 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
       .then(() => {
         console.log('✅ [Ortensia] 连接成功')
         homeStore.setState({ chatProcessing: false })
-        
-        // 🆕 连接成功后，主动发现已存在的 Cursor 对话
-        setTimeout(() => {
-          client.discoverExistingConversations()
-        }, 1000) // 延迟 1 秒，确保 Inject 也已注册
+        // 🆕 discoverExistingConversations 现在在 register_ack 后自动调用（OrtensiaClient 内部处理）
       })
       .catch((error) => {
         console.error('❌ [Ortensia] 连接失败:', error)

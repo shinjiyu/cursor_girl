@@ -217,6 +217,11 @@ export class OrtensiaClient {
       switch (message.type) {
         case MessageType.REGISTER_ACK:
           console.log('✅ [Ortensia] 注册成功:', message.payload)
+          
+          // 🆕 注册成功后，延迟一下再发现已存在的对话（给 Inject 时间注册）
+          setTimeout(() => {
+            this.discoverExistingConversations()
+          }, 1500)
           break
         
         case MessageType.HEARTBEAT_ACK:
