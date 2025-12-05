@@ -98,6 +98,12 @@ export class OrtensiaClient {
     return new Promise((resolve, reject) => {
       console.log(`🌸 [Ortensia] 连接到中央服务器: ${url}`)
       
+      // 🆕 清理旧的订阅者（避免页面刷新后残留）
+      if (this.globalSubscribers.size > 0) {
+        console.log(`⚠️ [Ortensia] 检测到 ${this.globalSubscribers.size} 个旧订阅者，清理中...`)
+        this.globalSubscribers.clear()
+      }
+      
       try {
         this.ws = new WebSocket(url)
 

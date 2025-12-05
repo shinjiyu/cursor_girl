@@ -94,12 +94,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
   
   setAutoCheckEnabled: (conversationId: string, enabled: boolean) => {
+    console.log(`📝 [Store] setAutoCheckEnabled: ${conversationId} = ${enabled}`)
     set((state) => {
       const newConversations = new Map(state.conversations)
       const conversation = newConversations.get(conversationId)
       
       if (conversation) {
         conversation.autoCheckEnabled = enabled
+        console.log(`✅ [Store] 设置成功，当前值: ${conversation.autoCheckEnabled}`)
+      } else {
+        console.warn(`⚠️ [Store] 找不到对话: ${conversationId}`)
       }
       
       return { conversations: newConversations }
@@ -108,7 +112,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   
   getAutoCheckEnabled: (conversationId: string) => {
     const conversation = get().conversations.get(conversationId)
-    return conversation?.autoCheckEnabled ?? false
+    const result = conversation?.autoCheckEnabled ?? false
+    console.log(`🔍 [Store] getAutoCheckEnabled(${conversationId}): ${result}`)
+    return result
   },
 }))
 

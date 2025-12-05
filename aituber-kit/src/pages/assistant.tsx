@@ -130,7 +130,8 @@ export default function AssistantPage() {
   
   // 处理 Agent 完成
   const handleAgentCompleted = useCallback((message: OrtensiaMessage) => {
-    console.log('🎯 [Auto Check] handleAgentCompleted 被调用', message)
+    console.log('🎯 [Auto Check] ============ handleAgentCompleted 被调用 ============')
+    console.log('🎯 [Auto Check] 完整消息:', JSON.stringify(message, null, 2))
     
     // 从 message.from 提取 conversation_id
     const hookId = message.from
@@ -141,7 +142,14 @@ export default function AssistantPage() {
     }
     
     console.log(`🎯 [Auto Check] Hook ID: ${hookId}`)
-    console.log(`🎯 [Auto Check] Conversation ID: ${convId}`)
+    console.log(`🎯 [Auto Check] 提取的 Conversation ID: ${convId}`)
+    
+    // 打印所有对话的 ID 和状态
+    const allConvs = Array.from(conversationStore.conversations.entries())
+    console.log(`🎯 [Auto Check] 当前所有对话 (共 ${allConvs.length} 个):`)
+    allConvs.forEach(([id, conv]) => {
+      console.log(`  - ${id}: autoCheck=${conv.autoCheckEnabled}, title="${conv.title}"`)
+    })
     
     const autoEnabled = conversationStore.getAutoCheckEnabled(convId)
     console.log(`🎯 [Auto Check] 自动检查状态: ${autoEnabled}`)
@@ -220,12 +228,14 @@ export default function AssistantPage() {
     console.log(`✅ [Discovery] 发现对话完成: ${title} (${conversation_id.substring(0, 8)})`)
   }, [conversationStore])
 
-  // 🔧 使用 useRef 确保只订阅一次（防止 React Strict Mode 双重挂载）
+  // 🔧 使用全局标记确保只订阅一次（防止 React Strict Mode 双重挂载）
+  // useRef 在页面刷新后会重置，所以改用全局变量
   const isSubscribedRef = useRef(false)
   
   // 监听 Ortensia 消息（延迟等待 OrtensiaClient 初始化）
   useEffect(() => {
     console.log('🔧 [Setup] 准备设置消息订阅')
+    console.log(`🔧 [Setup] isSubscribedRef.current = ${isSubscribedRef.current}`)
     
     // 🔒 如果已订阅，跳过
     if (isSubscribedRef.current) {
