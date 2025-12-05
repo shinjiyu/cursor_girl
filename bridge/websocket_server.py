@@ -231,7 +231,8 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
     """处理新协议消息"""
     msg_type = message.type
     
-    logger.info(f"📨 [{client_info.client_id}] {msg_type.value}")
+    # 🔍 调试：打印更详细的消息信息
+    logger.info(f"📨 [{client_info.client_id}] {msg_type.value} (to: {message.to}, from: {message.from_})")
     
     try:
         if msg_type == MessageType.REGISTER:
@@ -791,49 +792,41 @@ async def handle_get_conversation_id(client_info: ClientInfo, message: Message):
     # 使用第一个 inject 客户端（广播模式）
     target_inject = inject_clients[0]
     
-    # 生成 JavaScript 代码来查询所有窗口的 conversation_id
-    js_code = """
-    (async function() {
-        const electron = await import('electron');
-        const windows = electron.BrowserWindow.getAllWindows();
-        
-        if (windows.length === 0) {
-            return JSON.stringify({
-                success: false,
-                conversations: [],
-                error: '没有打开的窗口'
-            });
-        }
-        
-        const results = [];
-        const extractConvIdCode = `(() => {
-            const el = document.querySelector('[id^="composer-bottom-add-context-"]');
-            if (!el) return null;
-            const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
-            return match ? match[1] : null;
-        })()`;
-        
-        for (let i = 0; i < windows.length; i++) {
-            try {
-                const conversationId = await windows[i].webContents.executeJavaScript(extractConvIdCode);
-                if (conversationId) {
-                    results.push({
-                        conversation_id: conversationId,
-                        window_index: i
-                    });
-                }
-            } catch (err) {
-                // 忽略查询失败的窗口
-            }
-        }
-        
-        return JSON.stringify({
-            success: true,
-            conversations: results,
-            total_windows: windows.length
+    # 生成在渲染进程 DOM 中执行的 JavaScript 代码（与 cursor_input_text 相同的方式）
+    # 这段代码会被 inject 在每个窗口的渲染进程中执行（广播模式）
+    js_code = """(() => {
+    const el = document.querySelector('[id^="composer-bottom-add-context-"]');
+    if (!el) {
+        return JSON.stringify({ 
+            found: false, 
+            conversationId: null,
+            title: null
         });
-    })()
-    """
+    }
+    
+    const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+    const conversationId = match ? match[1] : null;
+    
+    // 获取窗口标题
+    let title = document.querySelector('.window-title')?.textContent?.trim();
+    if (!title) {
+        title = document.querySelector('.titlebar-center')?.textContent?.trim();
+    }
+    // 清理标题（移除 "AgentsEditor" 等前缀）
+    if (title) {
+        title = title.replace(/^AgentsEditor\\s*/, '').trim();
+    }
+    if (!title) {
+        title = 'Untitled Conversation';
+    }
+    
+    return JSON.stringify({ 
+        found: true, 
+        conversationId: conversationId,
+        title: title,
+        elementId: el.id
+    });
+})()"""
     
     # 通过 EXECUTE_JS 发送
     execute_msg = MessageBuilder.execute_js(
@@ -904,17 +897,68 @@ async def handle_execute_js_result_for_discovery(message: Message):
             await requester.websocket.send(error_msg.to_json())
         return True
     
-    # 提取 conversations
+    # 🔍 打印原始结果用于调试
+    logger.info(f"🔍 [DEBUG] Inject 返回的原始结果类型: {type(result_data)}")
+    logger.info(f"🔍 [DEBUG] Inject 返回的原始结果: {result_data}")
+    
+    # 解析广播模式的结果：{0: result0, 1: result1, ...}
+    conversations = []
+    total_windows = 0
+    
     try:
-        conversations = result_data.get('conversations', []) if isinstance(result_data, dict) else []
+        if isinstance(result_data, dict):
+            # 广播模式：遍历每个窗口的结果
+            for window_idx_str, window_result in result_data.items():
+                try:
+                    window_idx = int(window_idx_str)
+                    total_windows += 1
+                    
+                    logger.info(f"  🔍 Window [{window_idx}]: {window_result}")
+                    
+                    # 检查是否是错误
+                    if isinstance(window_result, dict) and 'error' in window_result:
+                        logger.info(f"    ❌ 错误: {window_result['error']}")
+                        continue
+                    
+                    # 尝试解析窗口结果
+                    if isinstance(window_result, str):
+                        try:
+                            parsed = json.loads(window_result)
+                        except json.JSONDecodeError:
+                            logger.warning(f"    ⚠️  无法解析 JSON: {window_result}")
+                            continue
+                    else:
+                        parsed = window_result
+                    
+                    # 提取 conversation_id 和 title
+                    if isinstance(parsed, dict):
+                        conv_id = parsed.get('conversationId')
+                        title = parsed.get('title', 'Untitled Conversation')
+                        if conv_id:
+                            conversations.append({
+                                'conversation_id': conv_id,
+                                'title': title,
+                                'window_index': window_idx
+                            })
+                            logger.info(f"    ✅ 找到对话: {title} ({conv_id[:8]}...)")
+                        else:
+                            logger.info(f"    ⚠️  未找到 conversation_id (found={parsed.get('found')})")
+                    
+                except ValueError:
+                    # 不是数字索引，跳过
+                    continue
+                except Exception as e:
+                    logger.warning(f"    ⚠️  解析窗口 {window_idx_str} 失败: {e}")
+                    continue
         
-        logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话")
+        logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话（共 {total_windows} 个窗口）")
         
         # 为每个 conversation_id 发送一个结果消息
         requester = registry.get_by_id(requester_id)
         if requester:
             for conv in conversations:
                 conv_id = conv.get('conversation_id')
+                title = conv.get('title', 'Untitled Conversation')
                 window_index = conv.get('window_index')
                 
                 result_msg = MessageBuilder.get_conversation_id_result(
@@ -923,10 +967,11 @@ async def handle_execute_js_result_for_discovery(message: Message):
                     request_id=original_request_id,
                     success=True,
                     conversation_id=conv_id,
+                    title=title,
                     window_index=window_index
                 )
                 await requester.websocket.send(result_msg.to_json())
-                logger.info(f"  📤 发送结果: {conv_id} (window {window_index})")
+                logger.info(f"  📤 发送结果: {title} ({conv_id[:8]}... window {window_index})")
         
         return True
     except Exception as e:
@@ -946,17 +991,25 @@ async def handle_execute_js_result_for_discovery(message: Message):
 
 
 async def route_message(message: Message):
-    """路由消息到指定客户端"""
+    """路由消息到指定客户端（支持按ID或类型路由）"""
     target_id = message.to
     
     if not target_id or target_id == "":
         logger.warning(f"⚠️  消息没有指定目标，忽略")
         return
     
+    # 先尝试按ID查找
     target_client = registry.get_by_id(target_id)
     
+    # 如果找不到，尝试按类型查找（取第一个）
     if not target_client:
-        logger.warning(f"⚠️  目标客户端不存在: {target_id}")
+        clients_by_type = registry.get_by_type(target_id)
+        if clients_by_type:
+            target_client = clients_by_type[0]
+            logger.info(f"🔍 按类型路由: {target_id} → {target_client.client_id}")
+    
+    if not target_client:
+        logger.warning(f"⚠️  目标客户端不存在（ID或类型）: {target_id}")
         
         # 发送错误响应（如果是命令消息）
         if message.type in [MessageType.COMPOSER_SEND_PROMPT, MessageType.COMPOSER_QUERY_STATUS]:
@@ -977,7 +1030,7 @@ async def route_message(message: Message):
     # 发送消息
     try:
         await target_client.websocket.send(message.to_json())
-        logger.info(f"📤 路由消息: {message.from_} → {target_id} ({message.type.value})")
+        logger.info(f"📤 路由消息: {message.from_} → {target_client.client_id} ({message.type.value})")
     except Exception as e:
         logger.error(f"❌ 发送消息失败: {e}")
 

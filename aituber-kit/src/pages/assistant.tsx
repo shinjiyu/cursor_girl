@@ -84,34 +84,11 @@ export default function AssistantPage() {
     console.log('🔌 外部连接模式已启用')
   }, [])
   
-  // 监听 Ortensia 消息
-  useEffect(() => {
-    const client = OrtensiaClient.getInstance()
-    if (!client) return
-    
-    const unsubscribe = client.subscribe((message: OrtensiaMessage) => {
-      // 处理 AITUBER_RECEIVE_TEXT
-      if (message.type === MessageType.AITUBER_RECEIVE_TEXT) {
-        handleAituberReceiveText(message)
-      }
-      
-      // 处理 AGENT_COMPLETED
-      if (message.type === MessageType.AGENT_COMPLETED) {
-        handleAgentCompleted(message)
-      }
-      
-      // 🆕 处理 GET_CONVERSATION_ID_RESULT（发现已存在的对话）
-      if (message.type === MessageType.GET_CONVERSATION_ID_RESULT) {
-        handleConversationDiscovered(message)
-      }
-    })
-    
-    return () => unsubscribe()
-  }, [])
-  
   // 处理接收文本
   const handleAituberReceiveText = useCallback((message: OrtensiaMessage) => {
     const { text, emotion, audio_file, conversation_id } = message.payload
+    
+    console.log('✅ 处理消息:', text.substring(0, 50))
     
     // 如果没有 conversation_id，使用默认值
     const convId = conversation_id || 'default'
@@ -153,6 +130,8 @@ export default function AssistantPage() {
   
   // 处理 Agent 完成
   const handleAgentCompleted = useCallback((message: OrtensiaMessage) => {
+    console.log('🎯 [Auto Check] handleAgentCompleted 被调用', message)
+    
     // 从 message.from 提取 conversation_id
     const hookId = message.from
     let convId = 'default'
@@ -161,21 +140,31 @@ export default function AssistantPage() {
       convId = hookId.substring(5)
     }
     
+    console.log(`🎯 [Auto Check] Hook ID: ${hookId}`)
+    console.log(`🎯 [Auto Check] Conversation ID: ${convId}`)
+    
     const autoEnabled = conversationStore.getAutoCheckEnabled(convId)
+    console.log(`🎯 [Auto Check] 自动检查状态: ${autoEnabled}`)
     
     if (!autoEnabled) {
-      console.log(`[Auto Check] ${convId}: 自动检查未启用`)
+      console.log(`⚠️  [Auto Check] ${convId.substring(0, 8)}: 自动检查未启用`)
       return
     }
     
-    if (!autoChecker.canTriggerCheck(convId)) {
+    const canTrigger = autoChecker.canTriggerCheck(convId)
+    console.log(`🎯 [Auto Check] 是否可以触发: ${canTrigger}`)
+    
+    if (!canTrigger) {
+      console.log(`⚠️  [Auto Check] ${convId.substring(0, 8)}: 防抖检查未通过`)
       return
     }
+    
+    console.log(`✅ [Auto Check] 将在 1 秒后发送检查提示`)
     
     // 延迟1秒后发送检查
     setTimeout(() => {
       const checkPrompt = autoChecker.getCheckPrompt()
-      console.log(`[Auto Check] ${convId}: 发送检查提示`)
+      console.log(`📤 [Auto Check] ${convId.substring(0, 8)}: 发送检查提示 "${checkPrompt}"`)
       
       conversationStore.addMessage(convId, {
         role: 'user',
@@ -195,27 +184,112 @@ export default function AssistantPage() {
   
   // 🆕 处理发现的对话
   const handleConversationDiscovered = useCallback((message: OrtensiaMessage) => {
-    const { conversation_id, success } = message.payload
+    console.log('🔍 [Discovery] handleConversationDiscovered 被调用', message.payload)
+    
+    const { conversation_id, title, success } = message.payload
     
     if (!success || !conversation_id) {
-      console.log('⚠️  [Discovery] 未找到有效的 conversation_id')
+      console.log('⚠️  [Discovery] 未找到有效的 conversation_id', { success, conversation_id })
       return
     }
     
-    // 创建对话 tab（如果不存在）
-    const conv = conversationStore.getOrCreateConversation(conversation_id)
+    console.log(`🔍 [Discovery] 正在创建对话: ${title || conversation_id}`)
+    
+    // 创建对话 tab（如果不存在），使用服务器返回的标题
+    const conv = conversationStore.getOrCreateConversation(conversation_id, title)
+    console.log(`🔍 [Discovery] 对话已创建/获取:`, conv)
+    
+    // 如果已存在但标题不同，更新标题
+    if (title && conv.title !== title) {
+      console.log(`🔍 [Discovery] 更新标题: "${conv.title}" → "${title}"`)
+      conversationStore.updateConversationTitle(conversation_id, title)
+    }
     
     // 如果是新创建的对话，添加一条欢迎消息
     if (conv.messages.length === 0) {
+      console.log(`🔍 [Discovery] 添加欢迎消息`)
       conversationStore.addMessage(conversation_id, {
         role: 'system',
-        content: `✅ 已连接到 Cursor 对话: ${conversation_id.substring(0, 8)}...`,
+        content: `✅ 已连接到 Cursor 对话: ${title || conversation_id.substring(0, 8)}`,
         timestamp: Date.now()
       })
+    } else {
+      console.log(`🔍 [Discovery] 对话已有 ${conv.messages.length} 条消息，跳过欢迎消息`)
     }
     
-    console.log(`🔍 [Discovery] 发现对话: ${conversation_id}`)
+    console.log(`✅ [Discovery] 发现对话完成: ${title} (${conversation_id.substring(0, 8)})`)
   }, [conversationStore])
+
+  // 🔧 使用 useRef 确保只订阅一次（防止 React Strict Mode 双重挂载）
+  const isSubscribedRef = useRef(false)
+  
+  // 监听 Ortensia 消息（延迟等待 OrtensiaClient 初始化）
+  useEffect(() => {
+    console.log('🔧 [Setup] 准备设置消息订阅')
+    
+    // 🔒 如果已订阅，跳过
+    if (isSubscribedRef.current) {
+      console.log('⚠️  [Setup] 已经订阅过了，跳过重复订阅')
+      return
+    }
+    
+    let unsubscribe: (() => void) | null = null
+    let retryCount = 0
+    const maxRetries = 10
+    
+    const setupSubscription = () => {
+      const client = OrtensiaClient.getInstance()
+      
+      if (!client) {
+        retryCount++
+        if (retryCount <= maxRetries) {
+          console.log(`⏳ [Setup] OrtensiaClient 尚未初始化，${100}ms 后重试 (${retryCount}/${maxRetries})`)
+          setTimeout(setupSubscription, 100)
+        } else {
+          console.error('❌ [Setup] OrtensiaClient 初始化超时')
+        }
+        return
+      }
+      
+      console.log('✅ [Setup] OrtensiaClient 已找到，设置订阅')
+      
+      unsubscribe = client.subscribe((message: OrtensiaMessage) => {
+        console.log('📬 [Subscribe] 收到消息类型:', message.type)
+        
+        // 处理 AITUBER_RECEIVE_TEXT
+        if (message.type === MessageType.AITUBER_RECEIVE_TEXT) {
+          console.log('→ 调用 handleAituberReceiveText')
+          handleAituberReceiveText(message)
+        }
+        
+        // 处理 AGENT_COMPLETED
+        if (message.type === MessageType.AGENT_COMPLETED) {
+          console.log('→ 调用 handleAgentCompleted')
+          handleAgentCompleted(message)
+        }
+        
+        // 🆕 处理 GET_CONVERSATION_ID_RESULT（发现已存在的对话）
+        if (message.type === MessageType.GET_CONVERSATION_ID_RESULT) {
+          console.log('→ 调用 handleConversationDiscovered')
+          handleConversationDiscovered(message)
+        }
+      })
+      
+      isSubscribedRef.current = true
+      console.log('✅ [Setup] 消息订阅已设置，标记为已订阅')
+    }
+    
+    // 开始尝试设置订阅
+    setupSubscription()
+    
+    return () => {
+      console.log('🔌 [Cleanup] 取消消息订阅')
+      if (unsubscribe) {
+        unsubscribe()
+      }
+      // 注意：不要在 cleanup 中重置 isSubscribedRef，因为 Strict Mode 会导致这个问题
+    }
+  }, [handleAituberReceiveText, handleAgentCompleted, handleConversationDiscovered])
 
   // 鼠标悬停时显示控制按钮
   const handleMouseEnter = () => {

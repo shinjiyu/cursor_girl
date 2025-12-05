@@ -63,6 +63,9 @@ export class OrtensiaClient {
   private messageHandlers: Map<MessageType, (msg: OrtensiaMessage) => void> = new Map()
   private globalSubscribers: Set<(msg: OrtensiaMessage) => void> = new Set()
   
+  // 🆕 消息去重（防止 React Strict Mode 多次订阅导致重复处理）
+  private processedMessages: Set<string> = new Set()
+  
   // 单例模式
   private static instance: OrtensiaClient | null = null
 
@@ -205,9 +208,48 @@ export class OrtensiaClient {
       const message: OrtensiaMessage = JSON.parse(event.data)
       console.log('📨 [Ortensia] 收到消息:', message.type)
 
+      // 🆕 对需要去重的消息类型进行去重检查
+      const deduplicateTypes = [
+        MessageType.AITUBER_RECEIVE_TEXT,
+        MessageType.AGENT_COMPLETED,
+        MessageType.AGENT_STATUS_CHANGED
+      ]
+      
+      if (deduplicateTypes.includes(message.type)) {
+        // 生成消息指纹
+        const fingerprint = `${message.type}_${message.from}_${JSON.stringify(message.payload)}_${message.timestamp}`
+        
+        console.log(`🔍 [去重] 实例 ${this.clientId}: 检查消息`, {
+          type: message.type,
+          fingerprint: fingerprint.substring(0, 80),
+          已处理数量: this.processedMessages.size,
+          订阅者数量: this.globalSubscribers.size
+        })
+        
+        // 检查是否已处理
+        if (this.processedMessages.has(fingerprint)) {
+          console.log(`🔕 [去重] 实例 ${this.clientId}: 跳过重复消息:`, message.type)
+          return
+        }
+        
+        // 标记为已处理
+        this.processedMessages.add(fingerprint)
+        console.log(`✅ [去重] 实例 ${this.clientId}: 标记为已处理 (共 ${this.processedMessages.size} 条)`)
+        
+        // 清理旧指纹（保留最近 50 条）
+        if (this.processedMessages.size > 50) {
+          const entries = Array.from(this.processedMessages)
+          this.processedMessages = new Set(entries.slice(-25))
+        }
+      }
+
       // 通知所有全局订阅者
-      this.globalSubscribers.forEach(subscriber => {
+      console.log(`📢 [订阅] 实例 ${this.clientId}: 通知 ${this.globalSubscribers.size} 个订阅者`)
+      let subscriberIndex = 0
+      this.globalSubscribers.forEach((subscriber) => {
         try {
+          subscriberIndex++
+          console.log(`📢 [订阅] 实例 ${this.clientId}: 调用订阅者 ${subscriberIndex}`)
           subscriber(message)
         } catch (error) {
           console.error('❌ [Ortensia] 订阅者处理错误:', error)
@@ -270,7 +312,11 @@ export class OrtensiaClient {
     }
 
     try {
-      this.ws.send(JSON.stringify(message))
+      const jsonStr = JSON.stringify(message)
+      console.log(`🔍 [DEBUG] 准备发送消息: type=${message.type}, to=${message.to}, from=${message.from}`)
+      console.log(`🔍 [DEBUG] JSON 内容 (前 200 字符): ${jsonStr.substring(0, 200)}`)
+      this.ws.send(jsonStr)
+      console.log(`✅ [DEBUG] 消息已发送到 WebSocket`)
     } catch (error) {
       console.error('❌ [Ortensia] 发送消息失败:', error)
     }
@@ -287,9 +333,14 @@ export class OrtensiaClient {
    * 订阅所有消息（返回取消订阅函数）
    */
   public subscribe(handler: (msg: OrtensiaMessage) => void): () => void {
+    console.log(`➕ [订阅] 实例 ${this.clientId}: 添加订阅者 (之前有 ${this.globalSubscribers.size} 个)`)
     this.globalSubscribers.add(handler)
+    console.log(`✅ [订阅] 实例 ${this.clientId}: 现在有 ${this.globalSubscribers.size} 个订阅者`)
+    
     return () => {
-      this.globalSubscribers.delete(handler)
+      console.log(`➖ [订阅] 实例 ${this.clientId}: 移除订阅者 (之前有 ${this.globalSubscribers.size} 个)`)
+      const deleted = this.globalSubscribers.delete(handler)
+      console.log(`${deleted ? '✅' : '❌'} [订阅] 实例 ${this.clientId}: 移除${deleted ? '成功' : '失败'}，现在有 ${this.globalSubscribers.size} 个订阅者`)
     }
   }
 

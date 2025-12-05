@@ -32,6 +32,8 @@ class StopAgentHook(StopHook):
                 "Agent 任务完成了！太棒了！🎉",
                 emotion="excited"
             )
+            # 🆕 发送 AGENT_COMPLETED 事件（用于触发自动任务检查）
+            self.send_agent_completed_event()
         elif status == "aborted":
             self.send_to_ortensia(
                 "Agent 任务被中止了",
@@ -51,6 +53,50 @@ class StopAgentHook(StopHook):
         #     return "继续优化代码"
         
         return None  # 不继续
+    
+    def send_agent_completed_event(self) -> None:
+        """发送 AGENT_COMPLETED 事件到中央服务器"""
+        try:
+            import websockets
+            import asyncio
+            import time
+            import json
+            
+            conversation_id = self.input_data.get('conversation_id', 'unknown')
+            client_id = f"hook-{conversation_id}"
+            
+            async def send_event():
+                async with asyncio.timeout(3):
+                    async with websockets.connect(self.ws_server, open_timeout=2, close_timeout=1) as websocket:
+                        # 1. 注册
+                        register_msg = {
+                            "type": "register",
+                            "from": client_id,
+                            "to": None,
+                            "timestamp": int(time.time() * 1000),
+                            "payload": {"client_type": "agent_hook"}
+                        }
+                        await websocket.send(json.dumps(register_msg))
+                        await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                        
+                        # 2. 发送 AGENT_COMPLETED 事件
+                        event_msg = {
+                            "type": "agent_completed",
+                            "from": client_id,
+                            "to": "",  # 广播
+                            "timestamp": int(time.time() * 1000),
+                            "payload": {
+                                "agent_id": "default",
+                                "result": "success",
+                                "summary": "任务已完成"
+                            }
+                        }
+                        await websocket.send(json.dumps(event_msg))
+                        self.logger.info(f"✅ AGENT_COMPLETED 事件已发送")
+            
+            asyncio.run(send_event())
+        except Exception as e:
+            self.logger.error(f"❌ 发送 AGENT_COMPLETED 事件失败: {e}")
 
 
 if __name__ == "__main__":

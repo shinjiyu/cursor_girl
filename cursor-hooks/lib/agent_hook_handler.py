@@ -105,11 +105,51 @@ class AgentHookHandler:
             import websockets
             
             # ============================================================
+            # 🆕 消息去重机制（防止 Cursor 重复调用 Hook）
+            # ============================================================
+            conversation_id = self.input_data.get('conversation_id', 'unknown')
+            
+            # 生成消息指纹（用于去重）
+            message_fingerprint = hashlib.md5(
+                f"{conversation_id}_{self.hook_name}_{text}_{time.time() // 5}".encode()
+            ).hexdigest()
+            
+            # 检查最近 5 秒内是否发送过相同消息
+            dedup_file = Path("/tmp/ortensia-hook-dedup.txt")
+            recent_messages = set()
+            
+            if dedup_file.exists():
+                try:
+                    # 读取最近的消息指纹（只保留5秒内的）
+                    current_time = time.time()
+                    with open(dedup_file, 'r') as f:
+                        for line in f:
+                            if line.strip():
+                                parts = line.strip().split('|')
+                                if len(parts) == 2:
+                                    timestamp, fingerprint = parts
+                                    if current_time - float(timestamp) < 5:  # 5秒内
+                                        recent_messages.add(fingerprint)
+                except Exception as e:
+                    logger.warning(f"⚠️  读取去重文件失败: {e}")
+            
+            # 如果是重复消息，跳过
+            if message_fingerprint in recent_messages:
+                logger.info(f"🔕 跳过重复消息: {text[:50]}...")
+                return
+            
+            # 记录新消息
+            try:
+                with open(dedup_file, 'a') as f:
+                    f.write(f"{time.time()}|{message_fingerprint}\n")
+            except Exception as e:
+                logger.warning(f"⚠️  写入去重文件失败: {e}")
+            
+            # ============================================================
             # 使用 conversation_id 作为 hook 的客户端 ID
             # ============================================================
             # V10: 简化方案，直接使用 conversation_id 作为 ID
             # 服务器通过 conversation_id 关联 inject 和 hook
-            conversation_id = self.input_data.get('conversation_id', 'unknown')
             
             # 如果没有 conversation_id，使用 workspace hash 作为备用
             if conversation_id == 'unknown' or not conversation_id:
