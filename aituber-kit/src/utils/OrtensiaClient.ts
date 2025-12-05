@@ -59,6 +59,7 @@ export class OrtensiaClient {
   private ws: WebSocket | null = null
   private clientId: string
   private heartbeatInterval: number | null = null
+  private discoveryTimer: number | null = null  // 🆕 用于存储发现对话的定时器
   private messageHandlers: Map<MessageType, (msg: OrtensiaMessage) => void> = new Map()
   private globalSubscribers: Set<(msg: OrtensiaMessage) => void> = new Set()
   
@@ -116,6 +117,12 @@ export class OrtensiaClient {
         this.ws.onclose = () => {
           console.log('🔌 [Ortensia] WebSocket 已断开')
           this.stopHeartbeat()
+          
+          // 🆕 清除发现定时器
+          if (this.discoveryTimer !== null) {
+            clearTimeout(this.discoveryTimer)
+            this.discoveryTimer = null
+          }
         }
       } catch (error) {
         console.error('❌ [Ortensia] 连接失败:', error)
@@ -219,7 +226,11 @@ export class OrtensiaClient {
           console.log('✅ [Ortensia] 注册成功:', message.payload)
           
           // 🆕 注册成功后，延迟一下再发现已存在的对话（给 Inject 时间注册）
-          setTimeout(() => {
+          // 清除旧的定时器（避免 React Strict Mode 双重挂载导致的问题）
+          if (this.discoveryTimer !== null) {
+            clearTimeout(this.discoveryTimer)
+          }
+          this.discoveryTimer = window.setTimeout(() => {
             this.discoverExistingConversations()
           }, 1500)
           break
@@ -353,6 +364,15 @@ export class OrtensiaClient {
    * 向所有 Cursor Inject 广播请求，获取当前的 conversation_id
    */
   public discoverExistingConversations() {
+    console.log('🔍 [Ortensia] 正在发现已存在的 Cursor 对话...')
+    console.log(`   WebSocket 状态: ${this.ws ? this.ws.readyState : 'null'}`)
+    
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.error('❌ [Ortensia] 无法发送发现请求：WebSocket 未连接')
+      console.log('   提示：可能由于 React Strict Mode 导致连接被重置，请稍等片刻')
+      return
+    }
+
     const message: OrtensiaMessage = {
       type: MessageType.GET_CONVERSATION_ID,
       from: this.clientId,
@@ -364,7 +384,7 @@ export class OrtensiaClient {
     }
 
     this.send(message)
-    console.log('🔍 [Ortensia] 正在发现已存在的 Cursor 对话...')
+    console.log('📤 [Ortensia] 已发送 GET_CONVERSATION_ID 请求')
   }
 
   /**
@@ -404,6 +424,12 @@ export class OrtensiaClient {
 
     this.send(message)
     this.stopHeartbeat()
+    
+    // 🆕 清除发现定时器
+    if (this.discoveryTimer !== null) {
+      clearTimeout(this.discoveryTimer)
+      this.discoveryTimer = null
+    }
     
     setTimeout(() => {
       if (this.ws) {
