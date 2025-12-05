@@ -42,12 +42,16 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     const ss = settingsStore.getState()
     if (!ss.externalLinkageMode) return
 
-    // 创建 Ortensia 客户端
-    const client = new OrtensiaClient()
+    // 使用单例 Ortensia 客户端
+    const client = OrtensiaClient.getInstance()
+    if (!client) {
+      console.error('❌ [useExternalLinkage] OrtensiaClient 未初始化')
+      return
+    }
     ortensiaClientRef.current = client
 
     // 注册消息处理器 - 直接处理消息，不使用状态队列
-    client.on(MessageType.AITUBER_RECEIVE_TEXT, async (msg: OrtensiaMessage) => {
+    const handler = async (msg: OrtensiaMessage) => {
       console.log('📨 [Ortensia] 收到文本消息:', msg.payload)
       
       const tmpMessage: TmpMessage = {
@@ -87,10 +91,13 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
         tmpMessage.audio_file,
         tmpMessage.conversation_id
       )
-    })
+    }
+    
+    client.on(MessageType.AITUBER_RECEIVE_TEXT, handler)
 
-    // 连接到中央服务器
-    client.connect('ws://localhost:8765')
+    // 连接到中央服务器（如果还没连接）
+    if (!client.isConnected()) {
+      client.connect('ws://localhost:8765')
       .then(() => {
         console.log('✅ [Ortensia] 连接成功')
         homeStore.setState({ chatProcessing: false })
@@ -99,6 +106,7 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
       .catch((error) => {
         console.error('❌ [Ortensia] 连接失败:', error)
       })
+    }
 
     // 重连逻辑
     const reconnectInterval = setInterval(() => {
@@ -120,9 +128,11 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     }, 5000)
 
     return () => {
+      console.log('🔌 [useExternalLinkage] Cleanup: 移除消息处理器')
       clearInterval(reconnectInterval)
       if (client) {
-        client.disconnect()
+        client.off(MessageType.AITUBER_RECEIVE_TEXT)
+        // 注意：不要在这里 disconnect，因为其他组件可能还在使用
       }
     }
   }, [externalLinkageMode])
