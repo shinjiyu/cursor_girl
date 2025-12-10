@@ -305,3 +305,14 @@ public async playActionSequence(sequenceName: string) {
 3. ✅ 集成到 Cursor Hook
 4. ✅ 添加更多预定义动作
 
+
+
+
+
+
+
+
+
+
+
+

@@ -462,14 +462,15 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     """处理 Hook 发来的 aituber_receive_text 消息
     
     V11: 移除映射管理，改用动态查询
+    V12: 只在特定事件时生成 TTS（开始任务、任务结束）
     
     功能：
-    1. 生成 TTS 音频（如果 TTS 可用）
+    1. 生成 TTS 音频（仅限特定事件）
     2. 将消息（含音频）转发给所有 AITuber 客户端
     
     工作流程:
     1. 提取文本和情绪
-    2. 使用 TTS 生成音频文件
+    2. 检查事件类型，决定是否生成 TTS
     3. 将音频文件路径添加到消息中
     4. 转发给所有 AITuber 客户端
     """
@@ -490,11 +491,19 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
         logger.warning(f"⚠️  目标客户端不存在: aituber")
         return
     
-    # 4. 生成 TTS 音频（如果 TTS 可用）
+    # 3. 提取消息信息
     text = payload.get('text', '')
     emotion = payload.get('emotion', 'neutral')
+    event_type = payload.get('event_type') or payload.get('hook_name', '')
     
-    if text and tts_manager:
+    # 🆕 只有这些事件才播放语音（开始任务、任务结束）
+    TTS_ENABLED_EVENTS = ['beforeSubmitPrompt', 'stop']
+    should_generate_tts = event_type in TTS_ENABLED_EVENTS
+    
+    logger.info(f"   事件类型: {event_type}, 生成TTS: {should_generate_tts}")
+    
+    # 4. 生成 TTS 音频（仅限特定事件）
+    if text and tts_manager and should_generate_tts:
         try:
             logger.info(f"🎤 生成 TTS: {text[:30]}... (emotion: {emotion})")
             
@@ -512,6 +521,8 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
         except Exception as e:
             logger.error(f"❌ TTS 生成失败: {e}")
             # TTS 失败不影响消息转发，继续执行
+    elif text and not should_generate_tts:
+        logger.info(f"📝 [跳过TTS] 事件 '{event_type}' 只显示文本，不播放语音")
     
     # ✨ 将 conversation_id 添加到 payload 中
     message.payload['conversation_id'] = conversation_id

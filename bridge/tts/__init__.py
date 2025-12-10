@@ -7,7 +7,8 @@ TTS 模块
 from typing import Optional, Dict, Any
 from .base import TTSBase
 from .macos_tts import MacOSTTS
-from .placeholder_tts import ChatTTS, PaddleSpeechTTS, EdgeTTS, AzureTTS
+from .chattts_tts import ChatTTS
+from .placeholder_tts import PaddleSpeechTTS, EdgeTTS, AzureTTS
 
 
 # TTS 引擎映射

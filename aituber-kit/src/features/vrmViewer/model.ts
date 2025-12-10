@@ -63,7 +63,8 @@ export class Model {
   public async loadAnimation(vrmAnimation: VRMAnimation): Promise<void> {
     const { vrm, mixer } = this
     if (vrm == null || mixer == null) {
-      throw new Error('You have to load VRM first')
+      console.warn('⚠️  [Model] VRM not loaded yet, skipping animation load')
+      return // 改为返回而不是抛出错误
     }
 
     const clip = vrmAnimation.createAnimationClip(vrm)

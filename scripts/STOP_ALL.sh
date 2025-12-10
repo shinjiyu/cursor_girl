@@ -39,12 +39,22 @@ fi
 
 echo ""
 
-# 停止其他可能的 websocket_server 进程（确保不影响 Cursor）
+# 停止所有 WebSocket 服务器进程（包括 ChatTTS 虚拟环境）
 if pgrep -f "websocket_server.py" > /dev/null; then
-    echo -e "${BLUE}🛑 清理其他 WebSocket 进程...${NC}"
+    echo -e "${BLUE}🛑 停止 WebSocket 服务器 (TTS)...${NC}"
     # 使用精确匹配，只杀死 websocket_server.py 进程，不影响 Cursor
     pkill -f "python.*websocket_server.py"
-    echo -e "${GREEN}✅ 已清理${NC}"
+    sleep 1
+    
+    # 确认已停止
+    if pgrep -f "websocket_server.py" > /dev/null; then
+        echo -e "${YELLOW}   使用强制停止${NC}"
+        pkill -9 -f "python.*websocket_server.py"
+    fi
+    
+    echo -e "${GREEN}✅ WebSocket 服务器已停止${NC}"
+else
+    echo -e "${YELLOW}⚠️  WebSocket 服务器未运行${NC}"
 fi
 
 echo ""

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { VRM } from '@pixiv/three-vrm'
-import { VRMAnimation } from '../../lib/VRMAnimation/VRMAnimation'
+import { loadVRMAnimation } from '../../lib/VRMAnimation/loadVRMAnimation'
 
 /**
  * 动画控制器 - 管理 VRM 身体动画
@@ -36,14 +36,14 @@ export class AnimationController {
     try {
       console.log(`🎬 [AnimationController] Loading animation: ${name} from ${url}`)
       
-      const response = await fetch(url)
-      if (!response.ok) {
-        console.log(`⚠️  Animation file not found: ${url}`)
+      // 使用 loadVRMAnimation 而不是 deserialize
+      const vrmAnimation = await loadVRMAnimation(url)
+      
+      if (!vrmAnimation) {
+        console.log(`⚠️  Animation file not found or invalid: ${url}`)
         return false
       }
       
-      const arrayBuffer = await response.arrayBuffer()
-      const vrmAnimation = await VRMAnimation.deserialize(arrayBuffer)
       const clip = vrmAnimation.createAnimationClip(this.vrm)
       
       this.animationCache.set(name, clip)

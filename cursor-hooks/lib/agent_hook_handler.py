@@ -177,12 +177,12 @@ class AgentHookHandler:
             
             # 使用 asyncio.run 来运行异步代码，带超时机制
             async def send_message():
-                # 添加 3 秒连接超时
-                async with asyncio.timeout(3):
+                # 🔧 增加超时时间（8秒），因为服务器可能在处理 TTS 生成
+                async with asyncio.timeout(8):
                     async with websockets.connect(
                         self.ws_server,
-                        open_timeout=2,  # 连接超时 2 秒
-                        close_timeout=1   # 关闭超时 1 秒
+                        open_timeout=5,   # 连接超时 5 秒
+                        close_timeout=2   # 关闭超时 2 秒
                     ) as websocket:
                         # 1. 发送注册消息（符合 Ortensia 协议格式）
                         register_msg = {
@@ -197,8 +197,8 @@ class AgentHookHandler:
                         await websocket.send(json.dumps(register_msg))
                         logger.debug(f"已发送注册消息: {json.dumps(register_msg)}")
                         
-                        # 接收注册确认（1秒超时）
-                        response = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                        # 🔧 增加超时到 5 秒（服务器可能因 TTS 生成而阻塞）
+                        response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
                         logger.debug(f"注册响应: {response}")
                         
                         # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型，符合 Ortensia 协议）

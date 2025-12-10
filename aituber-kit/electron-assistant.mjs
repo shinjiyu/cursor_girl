@@ -136,10 +136,15 @@ function createTray() {
     tray.setToolTip('オルテンシア编程助手')
     tray.setContextMenu(contextMenu)
     
-    // 双击托盘图标显示窗口
-    tray.on('double-click', () => {
+    // 单击托盘图标显示/隐藏窗口（更方便）
+    tray.on('click', () => {
       if (mainWindow) {
-        mainWindow.show()
+        if (mainWindow.isVisible()) {
+          mainWindow.hide()
+        } else {
+          mainWindow.show()
+          mainWindow.focus()
+        }
       }
     })
   } catch (error) {
@@ -174,10 +179,55 @@ app.on('before-quit', () => {
   }
 })
 
+// 保存窗口状态（用于最小化/恢复）
+let savedWindowState = {
+  width: WINDOW_CONFIG.width,
+  height: WINDOW_CONFIG.height,
+  x: 0,
+  y: 0,
+}
+
+// 迷你模式配置
+const MINI_CONFIG = {
+  width: 80,
+  height: 80,
+}
+
 // IPC 通信处理
 ipcMain.on('minimize-to-tray', () => {
   if (mainWindow) {
     mainWindow.hide()
+  }
+})
+
+// 🆕 切换到迷你模式（小图标浮窗）
+ipcMain.on('toggle-mini-mode', (event, isMini) => {
+  if (mainWindow) {
+    if (isMini) {
+      // 保存当前窗口状态
+      const bounds = mainWindow.getBounds()
+      savedWindowState = {
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y,
+      }
+      
+      // 获取屏幕尺寸，将迷你窗口放到右下角
+      const { width, height } = screen.getPrimaryDisplay().workAreaSize
+      
+      // 切换到迷你模式
+      mainWindow.setMinimumSize(MINI_CONFIG.width, MINI_CONFIG.height)
+      mainWindow.setSize(MINI_CONFIG.width, MINI_CONFIG.height)
+      mainWindow.setPosition(width - MINI_CONFIG.width - 20, height - MINI_CONFIG.height - 20)
+      mainWindow.setResizable(false)
+    } else {
+      // 恢复正常模式
+      mainWindow.setMinimumSize(WINDOW_CONFIG.minWidth, WINDOW_CONFIG.minHeight)
+      mainWindow.setSize(savedWindowState.width, savedWindowState.height)
+      mainWindow.setPosition(savedWindowState.x, savedWindowState.y)
+      mainWindow.setResizable(true)
+    }
   }
 })
 

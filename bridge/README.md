@@ -173,6 +173,54 @@ python test_emotions.py interactive
 - `full` - 运行完整测试
 - `quit` - 退出
 
+## 🎤 TTS（文字转语音）
+
+Event Bridge 支持多种 TTS 引擎：
+
+### 支持的引擎
+
+1. **ChatTTS** ⭐️ 推荐
+   - 高质量中文语音合成
+   - 支持情感控制
+   - 本地运行，无需网络
+   - 使用 Apple Silicon MPS 加速
+
+2. **macOS TTS**
+   - 系统内置
+   - 快速响应
+   - 多种音色可选
+
+### 配置 TTS
+
+编辑 `tts_config.json` 选择引擎：
+
+```json
+{
+  "engine": "chattts",
+  "chattts": {
+    "model_path": "/Users/user/Documents/tts/chattts/models/ChatTTS",
+    "device": "auto",
+    "temperature": 0.3,
+    "seed": 42,
+    "output_dir": "tts_output"
+  }
+}
+```
+
+### 使用 ChatTTS
+
+```bash
+# 运行 ChatTTS 测试
+cd bridge
+./run_chattts_test.sh
+
+# 或手动测试
+source /Users/user/Documents/tts/chattts/venv/bin/activate
+python test_chattts_integration.py
+```
+
+详细文档：[CHATTTS_USAGE.md](CHATTTS_USAGE.md)
+
 ## 🔌 WebSocket 连接
 
 Event Bridge 通过 WebSocket 与 AITuber Kit 通信：

@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 import homeStore from '@/features/stores/home'
 import settingsStore from '@/features/stores/settings'
 import { OrtensiaClient, MessageType, type OrtensiaMessage } from '@/utils/OrtensiaClient'
+import OrtensiaManager from '@/utils/OrtensiaManager'
 import { useConversationStore } from '@/features/stores/conversationStore'
 import { AutoTaskChecker } from '@/utils/AutoTaskChecker'
 import { MultiConversationChat } from '@/components/MultiConversationChat'
@@ -26,20 +27,36 @@ export default function AssistantPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [showControls, setShowControls] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isMiniMode, setIsMiniMode] = useState(false)  // 🆕 迷你模式状态
   const conversationStore = useConversationStore()
   const [autoChecker] = useState(() => new AutoTaskChecker())
+  
+  // 🆕 切换迷你模式
+  const toggleMiniMode = useCallback(() => {
+    const newMiniMode = !isMiniMode
+    setIsMiniMode(newMiniMode)
+    
+    // 通知 Electron 切换窗口大小
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      (window as any).electronAPI.toggleMiniMode(newMiniMode)
+    }
+  }, [isMiniMode])
 
   useEffect(() => {
     console.log('🚀 Assistant page loaded')
     setIsLoaded(true)
     
-    // 自动开启 WebSocket 外部连接模式 + macOS 系统 TTS
+    // 🎛️  使用 OrtensiaManager 统一管理
+    const manager = OrtensiaManager
+    manager.initialize()
+    
+    // 自动开启 WebSocket 外部连接模式（TTS 由服务器提供）
     settingsStore.setState({
       externalLinkageMode: true,
-      selectVoice: 'google',  // 使用 macOS 系统 TTS（Google TTS API）
+      // ✅ 不设置 selectVoice，使用 WebSocket 服务器的 ChatTTS
       selectLanguage: 'ja',
     })
-    console.log('✅ External linkage mode enabled (TTS: macOS System)')
+    console.log('✅ External linkage mode enabled (TTS: WebSocket Server - ChatTTS)')
     
     // 自动加载オルテンシア模型 - 增强版本，带重试
     let retryCount = 0
@@ -86,9 +103,12 @@ export default function AssistantPage() {
   
   // 处理接收文本
   const handleAituberReceiveText = useCallback((message: OrtensiaMessage) => {
-    const { text, emotion, audio_file, conversation_id } = message.payload
+    const { text, emotion, audio_file, conversation_id, event_type, hook_name } = message.payload
     
-    console.log('✅ 处理消息:', text.substring(0, 50))
+    // 🆕 获取事件类型（优先使用 event_type，其次 hook_name）
+    const msgEventType = event_type || hook_name
+    
+    console.log('✅ 处理消息:', text.substring(0, 50), `(event: ${msgEventType})`)
     
     // 如果没有 conversation_id，使用默认值
     const convId = conversation_id || 'default'
@@ -115,10 +135,10 @@ export default function AssistantPage() {
       console.log('🎵 [Assistant] 播放音频:', audio_file)
     }
     
-    // 检查是否包含停止关键词
+    // 🔧 修复：检查是否应该停止（同时检查事件类型和关键词）
     const autoEnabled = conversationStore.getAutoCheckEnabled(convId)
-    if (autoEnabled && autoChecker.shouldStop(text)) {
-      console.log(`[Auto Check] ${convId}: 检测到停止关键词`)
+    if (autoEnabled && autoChecker.shouldStop(text, msgEventType)) {
+      console.log(`[Auto Check] ${convId}: 检测到完成事件 (${msgEventType}) 包含停止关键词`)
       conversationStore.setAutoCheckEnabled(convId, false)
       conversationStore.addMessage(convId, {
         role: 'system',
@@ -151,19 +171,31 @@ export default function AssistantPage() {
       console.log(`  - ${id}: autoCheck=${conv.autoCheckEnabled}, title="${conv.title}"`)
     })
     
-    const autoEnabled = conversationStore.getAutoCheckEnabled(convId)
-    console.log(`🎯 [Auto Check] 自动检查状态: ${autoEnabled}`)
+    // 🔧 使用短 ID 匹配（前 8 个字符）
+    const shortConvId = convId.substring(0, 8)
+    const matchedConv = allConvs.find(([id]) => id.startsWith(shortConvId))
     
-    if (!autoEnabled) {
-      console.log(`⚠️  [Auto Check] ${convId.substring(0, 8)}: 自动检查未启用`)
+    if (!matchedConv) {
+      console.log(`⚠️  [Auto Check] 未找到匹配的对话: ${shortConvId}`)
       return
     }
     
-    const canTrigger = autoChecker.canTriggerCheck(convId)
+    const [matchedId, conv] = matchedConv
+    console.log(`✅ [Auto Check] 找到匹配: ${shortConvId} → ${matchedId}`)
+    
+    const autoEnabled = conversationStore.getAutoCheckEnabled(matchedId)
+    console.log(`🎯 [Auto Check] 自动检查状态: ${autoEnabled}`)
+    
+    if (!autoEnabled) {
+      console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 自动检查未启用`)
+      return
+    }
+    
+    const canTrigger = autoChecker.canTriggerCheck(matchedId)
     console.log(`🎯 [Auto Check] 是否可以触发: ${canTrigger}`)
     
     if (!canTrigger) {
-      console.log(`⚠️  [Auto Check] ${convId.substring(0, 8)}: 防抖检查未通过`)
+      console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 防抖检查未通过`)
       return
     }
     
@@ -172,21 +204,21 @@ export default function AssistantPage() {
     // 延迟1秒后发送检查
     setTimeout(() => {
       const checkPrompt = autoChecker.getCheckPrompt()
-      console.log(`📤 [Auto Check] ${convId.substring(0, 8)}: 发送检查提示 "${checkPrompt}"`)
+      console.log(`📤 [Auto Check] ${matchedId.substring(0, 8)}: 发送检查提示 "${checkPrompt}"`)
       
-      conversationStore.addMessage(convId, {
+      conversationStore.addMessage(matchedId, {
         role: 'user',
         content: `[自动检查] ${checkPrompt}`,
         timestamp: Date.now()
       })
       
-      // 发送到对应的 Cursor
+      // 发送到对应的 Cursor（使用原始的 convId）
       const client = OrtensiaClient.getInstance()
       if (client) {
         client.sendCursorInputText(checkPrompt, convId, true)
       }
       
-      autoChecker.recordCheck(convId)
+      autoChecker.recordCheck(matchedId)
     }, 1000)
   }, [conversationStore, autoChecker])
   
@@ -228,76 +260,38 @@ export default function AssistantPage() {
     console.log(`✅ [Discovery] 发现对话完成: ${title} (${conversation_id.substring(0, 8)})`)
   }, [conversationStore])
 
-  // 🔧 使用全局标记确保只订阅一次（防止 React Strict Mode 双重挂载）
-  // useRef 在页面刷新后会重置，所以改用全局变量
-  const isSubscribedRef = useRef(false)
-  
-  // 监听 Ortensia 消息（延迟等待 OrtensiaClient 初始化）
+  // 🎛️  使用 OrtensiaManager 统一管理消息订阅
+  // 不再需要处理时序和竞争问题
   useEffect(() => {
-    console.log('🔧 [Setup] 准备设置消息订阅')
-    console.log(`🔧 [Setup] isSubscribedRef.current = ${isSubscribedRef.current}`)
+    console.log('🔧 [Setup] 注册消息处理器到 OrtensiaManager')
     
-    // 🔒 如果已订阅，跳过
-    if (isSubscribedRef.current) {
-      console.log('⚠️  [Setup] 已经订阅过了，跳过重复订阅')
-      return
-    }
+    const manager = OrtensiaManager
     
-    let unsubscribe: (() => void) | null = null
-    let retryCount = 0
-    const maxRetries = 10
+    // 注册各类消息处理器
+    const unsubscribe1 = manager.on(MessageType.AITUBER_RECEIVE_TEXT, (message) => {
+      console.log('→ 调用 handleAituberReceiveText')
+      handleAituberReceiveText(message)
+    })
     
-    const setupSubscription = () => {
-      const client = OrtensiaClient.getInstance()
-      
-      if (!client) {
-        retryCount++
-        if (retryCount <= maxRetries) {
-          console.log(`⏳ [Setup] OrtensiaClient 尚未初始化，${100}ms 后重试 (${retryCount}/${maxRetries})`)
-          setTimeout(setupSubscription, 100)
-        } else {
-          console.error('❌ [Setup] OrtensiaClient 初始化超时')
-        }
-        return
-      }
-      
-      console.log('✅ [Setup] OrtensiaClient 已找到，设置订阅')
-      
-      unsubscribe = client.subscribe((message: OrtensiaMessage) => {
-        console.log('📬 [Subscribe] 收到消息类型:', message.type)
-        
-        // 处理 AITUBER_RECEIVE_TEXT
-        if (message.type === MessageType.AITUBER_RECEIVE_TEXT) {
-          console.log('→ 调用 handleAituberReceiveText')
-          handleAituberReceiveText(message)
-        }
-        
-        // 处理 AGENT_COMPLETED
-        if (message.type === MessageType.AGENT_COMPLETED) {
-          console.log('→ 调用 handleAgentCompleted')
-          handleAgentCompleted(message)
-        }
-        
-        // 🆕 处理 GET_CONVERSATION_ID_RESULT（发现已存在的对话）
-        if (message.type === MessageType.GET_CONVERSATION_ID_RESULT) {
-          console.log('→ 调用 handleConversationDiscovered')
-          handleConversationDiscovered(message)
-        }
-      })
-      
-      isSubscribedRef.current = true
-      console.log('✅ [Setup] 消息订阅已设置，标记为已订阅')
-    }
+    const unsubscribe2 = manager.on(MessageType.AGENT_COMPLETED, (message) => {
+      console.log('→ 调用 handleAgentCompleted')
+      handleAgentCompleted(message)
+    })
     
-    // 开始尝试设置订阅
-    setupSubscription()
+    const unsubscribe3 = manager.on(MessageType.GET_CONVERSATION_ID_RESULT, (message) => {
+      console.log('→ 调用 handleConversationDiscovered')
+      handleConversationDiscovered(message)
+    })
+    
+    // 标记处理器已就绪，触发发现对话请求
+    manager.markHandlersReady()
+    console.log('✅ [Setup] 所有处理器已注册并标记为就绪')
     
     return () => {
-      console.log('🔌 [Cleanup] 取消消息订阅')
-      if (unsubscribe) {
-        unsubscribe()
-      }
-      // 注意：不要在 cleanup 中重置 isSubscribedRef，因为 Strict Mode 会导致这个问题
+      console.log('🔌 [Cleanup] 清理消息处理器')
+      unsubscribe1()
+      unsubscribe2()
+      unsubscribe3()
     }
   }, [handleAituberReceiveText, handleAgentCompleted, handleConversationDiscovered])
 
@@ -349,151 +343,156 @@ export default function AssistantPage() {
         <div>🔌 WebSocket: Ready</div>
       </div>}
 
-      {/* WebSocket 管理器 */}
+      {/* WebSocket 管理器（始终加载） */}
       {isLoaded && <WebSocketManager />}
 
-      {/* VRM 角色显示区域（左侧） */}
-      <div 
-        style={{
-          width: '50%',  // 左侧占50%
-          height: '100%',
-          position: 'relative',
-          background: 'linear-gradient(135deg, rgba(10, 10, 20, 0.4) 0%, rgba(20, 10, 30, 0.5) 100%)',
-          backdropFilter: 'blur(10px)',
-          borderRight: '2px solid rgba(157, 78, 221, 0.3)',
-          boxShadow: '2px 0 20px rgba(157, 78, 221, 0.2)',
-          // 允许拖拽窗口
-          WebkitAppRegion: 'drag' as any,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {isLoaded && <VrmViewer />}
-        
-        {/* 左侧标题 */}
-        <div style={{
-          position: 'absolute',
-          top: 16,
-          left: 16,
-          color: 'rgba(255, 255, 255, 0.8)',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
-          WebkitAppRegion: 'no-drag',
-        }}>
-          🎭 オルテンシア
-        </div>
-      </div>
+      {/* 正常模式内容 */}
+      {!isMiniMode && (
+        <>
+          {/* VRM 角色显示区域（左侧） */}
+          <div 
+            style={{
+              width: '50%',  // 左侧占50%
+              height: '100%',
+              position: 'relative',
+              background: 'linear-gradient(135deg, rgba(10, 10, 20, 0.4) 0%, rgba(20, 10, 30, 0.5) 100%)',
+              backdropFilter: 'blur(10px)',
+              borderRight: '2px solid rgba(157, 78, 221, 0.3)',
+              boxShadow: '2px 0 20px rgba(157, 78, 221, 0.2)',
+              // 允许拖拽窗口
+              WebkitAppRegion: 'drag' as any,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {isLoaded && <VrmViewer />}
+            
+            {/* 左侧标题 */}
+            <div style={{
+              position: 'absolute',
+              top: 16,
+              left: 16,
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+              WebkitAppRegion: 'no-drag',
+            }}>
+              🎭 オルテンシア
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* 浮动控制按钮（鼠标悬停时显示）- 暂时隐藏 */}
-      {false && showControls && (
-        <div 
-          className="floating-controls"
+      {/* 迷你模式：显示一个可爱的小图标 */}
+      {isMiniMode ? (
+        <div
+          onClick={toggleMiniMode}
           style={{
-            position: 'absolute',
-            top: 10,
-            right: 10,
+            width: '100%',
+            height: '100%',
             display: 'flex',
-            gap: '8px',
-            // 禁止拖拽此区域
-            WebkitAppRegion: 'no-drag',
-            zIndex: 1000,
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(157, 78, 221, 0.9) 0%, rgba(199, 125, 255, 0.9) 100%)',
+            borderRadius: '16px',
+            boxShadow: '0 4px 20px rgba(157, 78, 221, 0.5)',
+            WebkitAppRegion: 'drag' as any,
+            transition: 'all 0.3s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)'
+            e.currentTarget.style.boxShadow = '0 6px 24px rgba(157, 78, 221, 0.7)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(157, 78, 221, 0.5)'
           }}
         >
-          {/* 设置按钮 */}
+          <span style={{ 
+            fontSize: '36px',
+            WebkitAppRegion: 'no-drag' as any,
+            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+          }}>
+            🌸
+          </span>
+        </div>
+      ) : (
+        /* 正常模式：窗口控制按钮（右上角固定显示） */
+        <div 
+          className="window-controls"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            display: 'flex',
+            gap: '6px',
+            WebkitAppRegion: 'no-drag' as any,
+            zIndex: 9999,
+          }}
+        >
+          {/* 最小化成小图标按钮 */}
           <button
-            className="control-button"
-            onClick={() => {
-              // 打开设置（可以弹出一个小窗口）
-              window.open('/', '_blank', 'width=800,height=600')
-            }}
+            title="缩小为图标"
+            onClick={toggleMiniMode}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: 'rgba(157, 78, 221, 0.9)',
-              border: '2px solid rgba(199, 125, 255, 0.5)',
+              width: 28,
+              height: 28,
+              borderRadius: '8px',
+              background: 'rgba(59, 130, 246, 0.8)',
+              border: 'none',
               color: 'white',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(157, 78, 221, 0.4)',
-              transition: 'all 0.3s ease',
+              fontSize: '14px',
+              boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)',
+              transition: 'all 0.2s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(199, 125, 255, 0.9)'
+              e.currentTarget.style.background = 'rgba(96, 165, 250, 0.95)'
               e.currentTarget.style.transform = 'scale(1.1)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(157, 78, 221, 0.9)'
+              e.currentTarget.style.background = 'rgba(59, 130, 246, 0.8)'
               e.currentTarget.style.transform = 'scale(1)'
             }}
           >
-            ⚙️
-          </button>
-
-          {/* 最小化按钮 */}
-          <button
-            className="control-button"
-            onClick={() => {
-              if (typeof window !== 'undefined' && (window as any).electronAPI) {
-                (window as any).electronAPI.minimizeToTray()
-              }
-            }}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: 'rgba(157, 78, 221, 0.9)',
-              border: '2px solid rgba(199, 125, 255, 0.5)',
-              color: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(157, 78, 221, 0.4)',
-              transition: 'all 0.3s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(199, 125, 255, 0.9)'
-              e.currentTarget.style.transform = 'scale(1.1)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(157, 78, 221, 0.9)'
-              e.currentTarget.style.transform = 'scale(1)'
-            }}
-          >
-            ➖
+            🌸
           </button>
 
           {/* 关闭按钮 */}
           <button
-            className="control-button"
+            title="关闭窗口"
             onClick={() => {
-              window.close()
+              if (typeof window !== 'undefined') {
+                window.close()
+              }
             }}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: 'rgba(239, 68, 68, 0.9)',
-              border: '2px solid rgba(252, 165, 165, 0.5)',
+              width: 28,
+              height: 28,
+              borderRadius: '8px',
+              background: 'rgba(239, 68, 68, 0.8)',
+              border: 'none',
               color: 'white',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-              transition: 'all 0.3s ease',
+              fontSize: '12px',
+              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+              transition: 'all 0.2s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(252, 165, 165, 0.9)'
+              e.currentTarget.style.background = 'rgba(248, 113, 113, 0.95)'
               e.currentTarget.style.transform = 'scale(1.1)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)'
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.8)'
               e.currentTarget.style.transform = 'scale(1)'
             }}
           >
@@ -502,42 +501,47 @@ export default function AssistantPage() {
         </div>
       )}
 
-      {/* 多窗口聊天UI（右侧固定显示） */}
-      <MultiConversationChat />
+      {/* 正常模式：聊天UI和装饰元素 */}
+      {!isMiniMode && (
+        <>
+          {/* 多窗口聊天UI（右侧固定显示） */}
+          <MultiConversationChat />
 
-      {/* 中间分隔线装饰 */}
-      <div style={{
-        position: 'absolute',
-        left: '50%',
-        top: 0,
-        width: '2px',
-        height: '100%',
-        background: 'linear-gradient(180deg, rgba(157, 78, 221, 0) 0%, rgba(157, 78, 221, 0.5) 50%, rgba(157, 78, 221, 0) 100%)',
-        pointerEvents: 'none',
-        zIndex: 10,
-      }} />
+          {/* 中间分隔线装饰 */}
+          <div style={{
+            position: 'absolute',
+            left: '50%',
+            top: 0,
+            width: '2px',
+            height: '100%',
+            background: 'linear-gradient(180deg, rgba(157, 78, 221, 0) 0%, rgba(157, 78, 221, 0.5) 50%, rgba(157, 78, 221, 0) 100%)',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }} />
 
-      {/* 状态指示器（左下角）*/}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 10,
-          left: 10,
-          padding: '8px 12px',
-          borderRadius: '12px',
-          background: 'rgba(157, 78, 221, 0.7)',
-          backdropFilter: 'blur(10px)',
-          color: 'white',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          boxShadow: '0 4px 12px rgba(157, 78, 221, 0.4)',
-          WebkitAppRegion: 'no-drag',
-          opacity: showControls ? 1 : 0,
-          transition: 'opacity 0.3s ease',
-        }}
-      >
-        オルテンシア
-      </div>
+          {/* 状态指示器（左下角）*/}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 10,
+              left: 10,
+              padding: '8px 12px',
+              borderRadius: '12px',
+              background: 'rgba(157, 78, 221, 0.7)',
+              backdropFilter: 'blur(10px)',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              boxShadow: '0 4px 12px rgba(157, 78, 221, 0.4)',
+              WebkitAppRegion: 'no-drag',
+              opacity: showControls ? 1 : 0,
+              transition: 'opacity 0.3s ease',
+            }}
+          >
+            オルテンシア
+          </div>
+        </>
+      )}
 
       {/* 全局样式 */}
       <style jsx global>{`

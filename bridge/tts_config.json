@@ -1,7 +1,7 @@
 {
   "_comment": "TTS 配置文件",
   
-  "engine": "macos",
+  "engine": "chattts",
   
   "macos": {
     "voice": "meijia",
@@ -10,10 +10,12 @@
   },
   
   "chattts": {
-    "model_path": "auto",
-    "compile": false,
+    "model_path": "/Users/user/Documents/tts/chattts/models/ChatTTS",
+    "device": "auto",
     "temperature": 0.3,
-    "output_dir": "tts_output"
+    "seed": 1234,
+    "output_dir": "tts_output",
+    "_comment_seed": "固定音色种子：1234=甜美萝莉音"
   },
   
   "paddlespeech": {

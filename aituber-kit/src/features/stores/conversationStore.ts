@@ -39,7 +39,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         id: conversationId,
         title: title || `Conversation ${conversationId.slice(0, 8)}`,
         messages: [],
-        autoCheckEnabled: false,  // 默认关闭
+        autoCheckEnabled: false,  // ✅ 默认禁用（修改：2025-12-08）
         lastActivity: Date.now(),
       }
       

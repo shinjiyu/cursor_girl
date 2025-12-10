@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('minimize-to-tray')
   },
   
+  // 🆕 切换迷你模式（小图标浮窗）
+  toggleMiniMode: (isMini) => {
+    ipcRenderer.send('toggle-mini-mode', isMini)
+  },
+  
   // 设置窗口大小
   setWindowSize: (width, height) => {
     ipcRenderer.send('set-window-size', width, height)

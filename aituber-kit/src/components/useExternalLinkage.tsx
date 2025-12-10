@@ -42,8 +42,14 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     const ss = settingsStore.getState()
     if (!ss.externalLinkageMode) return
 
-    // 使用单例 Ortensia 客户端
-    const client = OrtensiaClient.getInstance()
+    // 🎛️  使用 OrtensiaManager 获取客户端
+    const OrtensiaManager = require('@/utils/OrtensiaManager').default
+    const manager = OrtensiaManager
+    
+    // 确保管理器已初始化
+    manager.initialize()
+    
+    const client = manager.getClient()
     if (!client) {
       console.error('❌ [useExternalLinkage] OrtensiaClient 未初始化')
       return

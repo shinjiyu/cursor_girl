@@ -66,6 +66,10 @@ export class OrtensiaClient {
   // 🆕 消息去重（防止 React Strict Mode 多次订阅导致重复处理）
   private processedMessages: Set<string> = new Set()
   
+  // 🆕 发现对话的重试机制
+  private discoveryRetryCount = 0
+  private maxDiscoveryRetries = 3
+  
   // 单例模式
   private static instance: OrtensiaClient | null = null
 
@@ -99,9 +103,10 @@ export class OrtensiaClient {
       console.log(`🌸 [Ortensia] 连接到中央服务器: ${url}`)
       
       // 🆕 清理旧的订阅者（避免页面刷新后残留）
+      // 🔧 不清理订阅者！订阅者应该由各自的组件管理
+      // React Strict Mode 会导致重复订阅，但通过消息去重机制处理
       if (this.globalSubscribers.size > 0) {
-        console.log(`⚠️ [Ortensia] 检测到 ${this.globalSubscribers.size} 个旧订阅者，清理中...`)
-        this.globalSubscribers.clear()
+        console.log(`⚠️ [Ortensia] 已有 ${this.globalSubscribers.size} 个订阅者（保留）`)
       }
       
       try {
@@ -421,14 +426,29 @@ export class OrtensiaClient {
    * 向所有 Cursor Inject 广播请求，获取当前的 conversation_id
    */
   public discoverExistingConversations() {
-    console.log('🔍 [Ortensia] 正在发现已存在的 Cursor 对话...')
+    console.log(`🔍 [Ortensia] 正在发现已存在的 Cursor 对话 (尝试 ${this.discoveryRetryCount + 1}/${this.maxDiscoveryRetries})...`)
     console.log(`   WebSocket 状态: ${this.ws ? this.ws.readyState : 'null'}`)
+    console.log(`   实例 ID: ${this.clientId}`)
     
+    // 检查 WebSocket 连接状态
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('❌ [Ortensia] 无法发送发现请求：WebSocket 未连接')
-      console.log('   提示：可能由于 React Strict Mode 导致连接被重置，请稍等片刻')
+      console.warn('⚠️  [Ortensia] WebSocket 未连接')
+      
+      // 如果还有重试机会，延迟后重试
+      if (this.discoveryRetryCount < this.maxDiscoveryRetries) {
+        this.discoveryRetryCount++
+        const retryDelay = 2000 * this.discoveryRetryCount  // 递增延迟：2s, 4s, 6s
+        console.log(`   将在 ${retryDelay / 1000} 秒后重试...`)
+        setTimeout(() => this.discoverExistingConversations(), retryDelay)
+      } else {
+        console.error('❌ [Ortensia] 发现对话失败：已达最大重试次数')
+        console.log('   提示：请检查 WebSocket 服务器是否正常运行')
+      }
       return
     }
+
+    // 重置重试计数（成功连接）
+    this.discoveryRetryCount = 0
 
     const message: OrtensiaMessage = {
       type: MessageType.GET_CONVERSATION_ID,
