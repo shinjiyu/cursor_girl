@@ -768,10 +768,11 @@ async def handle_execute_js_result_for_discovery(message: Message):
 async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
     """处理从 AITuber 发来的 cursor_input_text 消息
     
-    V11 新方案：
-    1. 先查询所有窗口的 conversation_id（不指定 window_index）
-    2. 从结果中找到匹配的 window_index
-    3. 使用指定的 window_index 发送命令
+    V11.2 设计：
+    - 广播模式：JS 代码发送到所有窗口
+    - JS 代码内包含 conversation_id 检查
+    - 只有 conversation_id 匹配的窗口会真正执行输入
+    - 不匹配的窗口返回 {skipped: true}
     """
     from_id = message.from_
     text = message.payload.get('text', '')
@@ -797,40 +798,7 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
     
     # 使用第一个可用的 inject（一般情况下只有一个）
     target_inject = inject_clients[0]
-    window_index = None  # 默认不指定窗口（广播）
-    
-    # 如果指定了 conversation_id，先查询找到对应的窗口索引
-    if conversation_id:
-        logger.info(f"🔍 [Cursor Input] 查询 conversation_id 对应的窗口...")
-        
-        query_code = '''
-        (() => {
-            const el = document.querySelector('[id^="composer-bottom-add-context-"]');
-            if (!el) return JSON.stringify({ found: false });
-            const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
-            return JSON.stringify({ found: true, conversation_id: match ? match[1] : null });
-        })()
-        '''
-        
-        # 发送查询请求（不指定 window_index，查询所有窗口）
-        query_msg = MessageBuilder.execute_js(
-            from_id="server",
-            to_id=target_inject.client_id,
-            code=query_code,
-            request_id=f"query_conv_{int(time.time())}",
-            window_index=None  # 不指定，查询所有窗口
-        )
-        
-        await target_inject.websocket.send(query_msg.to_json())
-        
-        # 等待查询结果（简单实现：等待 1 秒）
-        # TODO: 改进为基于回调的异步等待
-        import asyncio
-        await asyncio.sleep(1)
-        
-        # 注意：这里需要从某处获取查询结果
-        # 暂时使用 None，表示广播到所有窗口
-        # 完整实现需要建立请求-响应的映射机制
+    window_index = None  # 广播模式（JS 代码内含 conversation_id 检查）
     
     if target_inject:
         try:
