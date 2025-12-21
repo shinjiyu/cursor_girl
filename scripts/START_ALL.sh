@@ -30,19 +30,41 @@ fi
 echo -e "${BLUE}🚀 启动中央 WebSocket 服务器...${NC}"
 cd "$PROJECT_DIR/bridge"
 
-# 检查 Python 依赖
-if ! python3 -c "import websockets" 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  检测到 websockets 未安装${NC}"
-    echo -e "${BLUE}正在安装依赖...${NC}"
-    pip3 install websockets --user --break-system-packages
+# 使用 ChatTTS 的 Python 环境（包含所有 TTS 依赖）
+CHATTTS_PYTHON="/Users/user/Documents/tts/chattts/venv/bin/python"
+
+# 检查 ChatTTS Python 是否可用
+if [ -f "$CHATTTS_PYTHON" ]; then
+    echo -e "${GREEN}✅ 使用 ChatTTS Python 环境${NC}"
+    PYTHON_CMD="$CHATTTS_PYTHON"
+else
+    echo -e "${YELLOW}⚠️  ChatTTS Python 不可用，使用系统 Python（TTS 可能不可用）${NC}"
+    PYTHON_CMD="python3"
+    
+    # 检查基础依赖
+    if ! $PYTHON_CMD -c "import websockets" 2>/dev/null; then
+        echo -e "${BLUE}正在安装 websockets...${NC}"
+        pip3 install websockets --user --break-system-packages
+    fi
 fi
 
 # 启动服务器
-python3 websocket_server.py > /tmp/ws_server.log 2>&1 &
+$PYTHON_CMD websocket_server.py > /tmp/ws_server.log 2>&1 &
 SERVER_PID=$!
 
-# 等待服务器启动
-sleep 2
+# 等待服务器启动（ChatTTS 模型加载需要 ~6-10 秒）
+echo -e "${YELLOW}⏳ 等待服务器启动（ChatTTS 加载中）...${NC}"
+MAX_WAIT=15
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if lsof -i :8765 &> /dev/null; then
+        break
+    fi
+    sleep 1
+    WAITED=$((WAITED + 1))
+    echo -ne "\r${YELLOW}⏳ 已等待 ${WAITED}/${MAX_WAIT} 秒...${NC}"
+done
+echo ""
 
 # 检查服务器是否成功启动
 if lsof -i :8765 &> /dev/null; then
@@ -62,6 +84,20 @@ echo ""
 echo -e "${BLUE}📋 系统状态：${NC}"
 echo ""
 echo -e "  ${GREEN}✅${NC} 中央服务器运行中 (端口 8765)"
+echo ""
+
+# 检查 TTS 状态（从日志读取）
+sleep 1  # 等待日志写入
+if grep -q "TTS 初始化成功" /tmp/ws_server.log 2>/dev/null; then
+    TTS_NAME=$(grep "TTS 初始化成功" /tmp/ws_server.log | head -1 | sed 's/.*: //')
+    echo -e "  ${GREEN}✅${NC} TTS 已就绪: $TTS_NAME"
+elif grep -q "TTS Manager 不可用" /tmp/ws_server.log 2>/dev/null; then
+    echo -e "  ${RED}❌${NC} TTS 不可用 (依赖缺失)"
+    echo -e "     检查日志: ${BLUE}head -20 /tmp/ws_server.log${NC}"
+else
+    echo -e "  ${YELLOW}⏳${NC} TTS 正在初始化..."
+    echo -e "     （ChatTTS 模型加载需要 10-30 秒）"
+fi
 echo ""
 
 # 检查 Cursor Hook 是否已安装

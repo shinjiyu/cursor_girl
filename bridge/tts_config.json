@@ -13,9 +13,9 @@
     "model_path": "/Users/user/Documents/tts/chattts/models/ChatTTS",
     "device": "auto",
     "temperature": 0.3,
-    "seed": 1234,
+    "seed": 13,
     "output_dir": "tts_output",
-    "_comment_seed": "固定音色种子：1234=甜美萝莉音"
+    "_comment_seed": "固定音色种子：13=年下甜妹音"
   },
   
   "paddlespeech": {

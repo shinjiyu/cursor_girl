@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎀 语音音色选择器</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent-pink: #ff6b9d;
+            --accent-purple: #c44bef;
+            --accent-blue: #4b9eff;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0c0;
+            --border-color: rgba(255, 107, 157, 0.3);
+            --glow-pink: 0 0 20px rgba(255, 107, 157, 0.4);
+            --glow-purple: 0 0 20px rgba(196, 75, 239, 0.4);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .test-text {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .test-text label {
+            color: var(--accent-pink);
+            font-weight: 500;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        .test-text p {
+            font-size: 1.3rem;
+            color: var(--text-primary);
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+            color: white;
+            box-shadow: var(--glow-pink);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 25px rgba(255, 107, 157, 0.5);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent-pink);
+        }
+        
+        .samples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .sample-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sample-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-pink), var(--accent-purple), var(--accent-blue));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .sample-card:hover::before {
+            opacity: 1;
+        }
+        
+        .sample-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--glow-purple);
+            border-color: var(--accent-purple);
+        }
+        
+        .sample-card.playing {
+            border-color: var(--accent-pink);
+            box-shadow: var(--glow-pink);
+        }
+        
+        .sample-card.playing::before {
+            opacity: 1;
+            animation: glow-pulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .sample-card.selected {
+            border-color: #4ade80;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.4);
+        }
+        
+        .sample-card.selected::after {
+            content: '✓ 已选择';
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: #4ade80;
+            color: #000;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .sample-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        
+        .seed-badge {
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .duration {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        
+        .sample-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .sample-actions button {
+            flex: 1;
+            padding: 0.7rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+        
+        .play-btn {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: white;
+        }
+        
+        .play-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(75, 158, 255, 0.4);
+        }
+        
+        .play-btn.playing {
+            background: linear-gradient(135deg, var(--accent-pink), #ff4757);
+        }
+        
+        .select-btn {
+            background: transparent;
+            border: 1px solid var(--text-secondary) !important;
+            color: var(--text-secondary);
+        }
+        
+        .select-btn:hover {
+            border-color: #4ade80 !important;
+            color: #4ade80;
+        }
+        
+        .select-btn.selected {
+            background: #4ade80;
+            color: #000;
+            border-color: #4ade80 !important;
+        }
+        
+        .waveform {
+            height: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .waveform-bars {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            height: 100%;
+            padding: 8px 16px;
+        }
+        
+        .waveform-bar {
+            width: 3px;
+            background: var(--accent-purple);
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+        
+        .sample-card.playing .waveform-bar {
+            animation: wave 0.5s ease-in-out infinite;
+        }
+        
+        @keyframes wave {
+            0%, 100% { transform: scaleY(0.3); }
+            50% { transform: scaleY(1); }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 4rem;
+            color: var(--text-secondary);
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--bg-card);
+            border-top-color: var(--accent-pink);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .selection-summary {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            border: 1px solid var(--accent-pink);
+            border-radius: 16px;
+            padding: 1rem 2rem;
+            box-shadow: var(--glow-pink);
+            display: none;
+            align-items: center;
+            gap: 1.5rem;
+            z-index: 100;
+        }
+        
+        .selection-summary.visible {
+            display: flex;
+        }
+        
+        .selection-summary .seed-info {
+            font-size: 1.1rem;
+        }
+        
+        .selection-summary .seed-info strong {
+            color: var(--accent-pink);
+        }
+        
+        .copy-btn {
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            color: #000;
+            font-weight: 500;
+        }
+        
+        .copy-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .samples-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .selection-summary {
+                flex-direction: column;
+                left: 1rem;
+                right: 1rem;
+                transform: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎀 语音音色选择器</h1>
+            <p class="subtitle">挑选最适合的年下甜妹音色</p>
+        </header>
+        
+        <div class="test-text">
+            <label>测试文本</label>
+            <p id="testText">加载中...</p>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="playAll()">▶ 连续播放全部</button>
+            <button class="btn btn-secondary" onclick="stopAll()">⏹ 停止播放</button>
+            <button class="btn btn-secondary" onclick="shuffleCards()">🔀 随机排序</button>
+        </div>
+        
+        <div id="samplesGrid" class="samples-grid">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>加载样本中...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="selectionSummary" class="selection-summary">
+        <div class="seed-info">
+            已选择: <strong id="selectedSeed">-</strong>
+        </div>
+        <button class="btn copy-btn" onclick="copyConfig()">📋 复制配置</button>
+    </div>
+    
+    <script>
+        let samples = [];
+        let currentAudio = null;
+        let currentCard = null;
+        let selectedSeed = null;
+        let playAllIndex = -1;
+        
+        // 生成波形条
+        function createWaveformBars() {
+            let bars = '';
+            for (let i = 0; i < 30; i++) {
+                const height = Math.random() * 60 + 20;
+                const delay = i * 0.03;
+                bars += `<div class="waveform-bar" style="height: ${height}%; animation-delay: ${delay}s;"></div>`;
+            }
+            return bars;
+        }
+        
+        // 加载样本数据
+        async function loadSamples() {
+            try {
+                const response = await fetch('samples.json');
+                const data = await response.json();
+                
+                document.getElementById('testText').textContent = data.text;
+                samples = data.samples;
+                
+                renderSamples();
+            } catch (error) {
+                document.getElementById('samplesGrid').innerHTML = `
+                    <div class="loading">
+                        <p style="color: #ff6b6b;">❌ 加载失败: ${error.message}</p>
+                        <p style="margin-top: 1rem;">请先运行 generate_voice_samples.py 生成样本</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // 渲染样本卡片
+        function renderSamples() {
+            const grid = document.getElementById('samplesGrid');
+            
+            grid.innerHTML = samples.map((sample, index) => `
+                <div class="sample-card" data-seed="${sample.seed}" data-index="${index}">
+                    <div class="sample-header">
+                        <span class="seed-badge">种子 ${sample.seed}</span>
+                        <span class="duration">${sample.duration.toFixed(1)}s</span>
+                    </div>
+                    <div class="waveform">
+                        <div class="waveform-bars">
+                            ${createWaveformBars()}
+                        </div>
+                    </div>
+                    <div class="sample-actions">
+                        <button class="play-btn" onclick="togglePlay(${index})">▶ 播放</button>
+                        <button class="select-btn" onclick="selectSample(${index})">♡ 选择</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // 播放/暂停
+        function togglePlay(index) {
+            const sample = samples[index];
+            const card = document.querySelector(`[data-index="${index}"]`);
+            const btn = card.querySelector('.play-btn');
+            
+            // 如果有正在播放的，先停止
+            if (currentAudio && currentCard !== card) {
+                stopCurrent();
+            }
+            
+            if (currentAudio && currentCard === card) {
+                // 暂停当前
+                stopCurrent();
+            } else {
+                // 播放新的
+                currentAudio = new Audio(sample.filename);
+                currentCard = card;
+                
+                card.classList.add('playing');
+                btn.textContent = '⏸ 暂停';
+                btn.classList.add('playing');
+                
+                currentAudio.play();
+                currentAudio.onended = () => {
+                    stopCurrent();
+                    // 如果是连续播放模式
+                    if (playAllIndex >= 0 && playAllIndex < samples.length - 1) {
+                        playAllIndex++;
+                        setTimeout(() => togglePlay(playAllIndex), 300);
+                    } else {
+                        playAllIndex = -1;
+                    }
+                };
+            }
+        }
+        
+        // 停止当前播放
+        function stopCurrent() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            if (currentCard) {
+                currentCard.classList.remove('playing');
+                const btn = currentCard.querySelector('.play-btn');
+                btn.textContent = '▶ 播放';
+                btn.classList.remove('playing');
+                currentCard = null;
+            }
+        }
+        
+        // 连续播放全部
+        function playAll() {
+            stopAll();
+            playAllIndex = 0;
+            togglePlay(0);
+        }
+        
+        // 停止所有
+        function stopAll() {
+            playAllIndex = -1;
+            stopCurrent();
+        }
+        
+        // 随机排序
+        function shuffleCards() {
+            samples = samples.sort(() => Math.random() - 0.5);
+            renderSamples();
+            // 恢复选中状态
+            if (selectedSeed !== null) {
+                const card = document.querySelector(`[data-seed="${selectedSeed}"]`);
+                if (card) {
+                    card.classList.add('selected');
+                    card.querySelector('.select-btn').classList.add('selected');
+                }
+            }
+        }
+        
+        // 选择样本
+        function selectSample(index) {
+            const sample = samples[index];
+            const card = document.querySelector(`[data-index="${index}"]`);
+            
+            // 取消之前的选择
+            document.querySelectorAll('.sample-card.selected').forEach(c => {
+                c.classList.remove('selected');
+                c.querySelector('.select-btn').classList.remove('selected');
+            });
+            
+            // 选择当前
+            card.classList.add('selected');
+            card.querySelector('.select-btn').classList.add('selected');
+            card.querySelector('.select-btn').textContent = '❤ 已选';
+            
+            selectedSeed = sample.seed;
+            
+            // 显示底部选择条
+            document.getElementById('selectedSeed').textContent = `种子 ${sample.seed}`;
+            document.getElementById('selectionSummary').classList.add('visible');
+        }
+        
+        // 复制配置
+        function copyConfig() {
+            if (selectedSeed === null) return;
+            
+            const config = `"seed": ${selectedSeed}`;
+            navigator.clipboard.writeText(config).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const original = btn.textContent;
+                btn.textContent = '✓ 已复制!';
+                setTimeout(() => btn.textContent = original, 2000);
+            });
+        }
+        
+        // 页面加载
+        document.addEventListener('DOMContentLoaded', loadSamples);
+    </script>
+</body>
+</html>
+
+
