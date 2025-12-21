@@ -836,10 +836,36 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
         try:
             # 生成 JavaScript 代码来输入文本
             # 使用模拟键盘输入的方式，适用于 Lexical 等复杂编辑器
+            # 🔑 广播模式：JS 代码内包含 conversation_id 检查，不匹配则跳过执行
             import json
+            target_conv_id = json.dumps(conversation_id) if conversation_id else 'null'
             js_code = f"""
             (async function() {{
                 try {{
+                    // 🔑 首先检查 conversation_id 是否匹配（广播模式下的过滤）
+                    const targetConversationId = {target_conv_id};
+                    
+                    if (targetConversationId) {{
+                        // 提取当前窗口的 conversation_id
+                        const convEl = document.querySelector('[id^="composer-bottom-add-context-"]');
+                        let currentConvId = null;
+                        if (convEl) {{
+                            const match = convEl.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+                            currentConvId = match ? match[1] : null;
+                        }}
+                        
+                        // 如果不匹配，跳过执行
+                        if (currentConvId !== targetConversationId) {{
+                            return JSON.stringify({{
+                                success: true,
+                                skipped: true,
+                                reason: 'conversation_id 不匹配',
+                                target: targetConversationId,
+                                current: currentConvId
+                            }});
+                        }}
+                    }}
+                    
                     // 查找 Composer 输入框
                     const inputSelector = 'div[contenteditable="true"][role="textbox"],' +
                                          'div[contenteditable="true"][aria-label*="composer"],' +
@@ -961,18 +987,17 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
             }})()
             """
             
-            # 发送 execute_js 消息给 inject（包含 conversation_id 用于单播）
+            # 发送 execute_js 消息给 inject（广播模式，JS 代码内含 conversation_id 检查）
             execute_msg = MessageBuilder.execute_js(
                 from_id="server",
                 to_id=target_inject.client_id,
                 code=js_code,
                 request_id=f"input_text_{from_id}_{int(time.time())}",
-                window_index=window_index,
-                conversation_id=conversation_id  # ✅ 传递 conversation_id，inject 会自动查找匹配的窗口
+                window_index=window_index
             )
             
             await target_inject.websocket.send(execute_msg.to_json())
-            logger.info(f"📤 [Cursor Input] JS 代码已发送: server → {target_inject.client_id} (conversation_id={conversation_id})")
+            logger.info(f"📤 [Cursor Input] JS 代码已发送(广播): server → {target_inject.client_id} (目标 conv_id={conversation_id}, JS 内含过滤逻辑)")
             
             # 注意：这里不等待结果，直接返回成功（异步模式）
             # 如果需要等待结果，需要实现一个回调机制
