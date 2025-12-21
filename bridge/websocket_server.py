@@ -961,17 +961,18 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
             }})()
             """
             
-            # 发送 execute_js 消息给 inject（包含 window_index）
+            # 发送 execute_js 消息给 inject（包含 conversation_id 用于单播）
             execute_msg = MessageBuilder.execute_js(
                 from_id="server",
                 to_id=target_inject.client_id,
                 code=js_code,
                 request_id=f"input_text_{from_id}_{int(time.time())}",
-                window_index=window_index  # V11: 使用 window_index 代替 conversation_id
+                window_index=window_index,
+                conversation_id=conversation_id  # ✅ 传递 conversation_id，inject 会自动查找匹配的窗口
             )
             
             await target_inject.websocket.send(execute_msg.to_json())
-            logger.info(f"📤 [Cursor Input] JS 代码已发送: server → {target_inject.client_id}")
+            logger.info(f"📤 [Cursor Input] JS 代码已发送: server → {target_inject.client_id} (conversation_id={conversation_id})")
             
             # 注意：这里不等待结果，直接返回成功（异步模式）
             # 如果需要等待结果，需要实现一个回调机制
