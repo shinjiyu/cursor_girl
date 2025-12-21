@@ -468,3 +468,14 @@ client.send_aituber_text(text="任务完成了！", emotion=action)
 
 
 
+
+
+
+
+
+
+
+
+
+
+

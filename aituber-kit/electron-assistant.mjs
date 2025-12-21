@@ -77,8 +77,11 @@ async function createAssistantWindow() {
 
 // 创建系统托盘
 function createTray() {
-  // 使用一个图标文件（你可以替换为自己的图标）
-  const iconPath = path.join(__dirname, 'public', 'favicon.ico')
+  // macOS 需要使用 PNG 格式，Windows 使用 ICO
+  const iconName = process.platform === 'darwin' 
+    ? 'images/setting-icons/logo2-2favicon.svg'  // macOS 使用 SVG/PNG
+    : 'favicon.ico'
+  const iconPath = path.join(__dirname, 'public', iconName)
   
   try {
     tray = new Tray(iconPath)

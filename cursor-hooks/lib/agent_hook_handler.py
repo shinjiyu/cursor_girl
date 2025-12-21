@@ -105,51 +105,11 @@ class AgentHookHandler:
             import websockets
             
             # ============================================================
-            # 🆕 消息去重机制（防止 Cursor 重复调用 Hook）
-            # ============================================================
-            conversation_id = self.input_data.get('conversation_id', 'unknown')
-            
-            # 生成消息指纹（用于去重）
-            message_fingerprint = hashlib.md5(
-                f"{conversation_id}_{self.hook_name}_{text}_{time.time() // 5}".encode()
-            ).hexdigest()
-            
-            # 检查最近 5 秒内是否发送过相同消息
-            dedup_file = Path("/tmp/ortensia-hook-dedup.txt")
-            recent_messages = set()
-            
-            if dedup_file.exists():
-                try:
-                    # 读取最近的消息指纹（只保留5秒内的）
-                    current_time = time.time()
-                    with open(dedup_file, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                parts = line.strip().split('|')
-                                if len(parts) == 2:
-                                    timestamp, fingerprint = parts
-                                    if current_time - float(timestamp) < 5:  # 5秒内
-                                        recent_messages.add(fingerprint)
-                except Exception as e:
-                    logger.warning(f"⚠️  读取去重文件失败: {e}")
-            
-            # 如果是重复消息，跳过
-            if message_fingerprint in recent_messages:
-                logger.info(f"🔕 跳过重复消息: {text[:50]}...")
-                return
-            
-            # 记录新消息
-            try:
-                with open(dedup_file, 'a') as f:
-                    f.write(f"{time.time()}|{message_fingerprint}\n")
-            except Exception as e:
-                logger.warning(f"⚠️  写入去重文件失败: {e}")
-            
-            # ============================================================
             # 使用 conversation_id 作为 hook 的客户端 ID
             # ============================================================
             # V10: 简化方案，直接使用 conversation_id 作为 ID
             # 服务器通过 conversation_id 关联 inject 和 hook
+            conversation_id = self.input_data.get('conversation_id', 'unknown')
             
             # 如果没有 conversation_id，使用 workspace hash 作为备用
             if conversation_id == 'unknown' or not conversation_id:
@@ -177,12 +137,12 @@ class AgentHookHandler:
             
             # 使用 asyncio.run 来运行异步代码，带超时机制
             async def send_message():
-                # 🔧 增加超时时间（8秒），因为服务器可能在处理 TTS 生成
-                async with asyncio.timeout(8):
+                # 添加 3 秒连接超时
+                async with asyncio.timeout(3):
                     async with websockets.connect(
                         self.ws_server,
-                        open_timeout=5,   # 连接超时 5 秒
-                        close_timeout=2   # 关闭超时 2 秒
+                        open_timeout=2,  # 连接超时 2 秒
+                        close_timeout=1   # 关闭超时 1 秒
                     ) as websocket:
                         # 1. 发送注册消息（符合 Ortensia 协议格式）
                         register_msg = {
@@ -197,8 +157,8 @@ class AgentHookHandler:
                         await websocket.send(json.dumps(register_msg))
                         logger.debug(f"已发送注册消息: {json.dumps(register_msg)}")
                         
-                        # 🔧 增加超时到 5 秒（服务器可能因 TTS 生成而阻塞）
-                        response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                        # 接收注册确认（1秒超时）
+                        response = await asyncio.wait_for(websocket.recv(), timeout=1.0)
                         logger.debug(f"注册响应: {response}")
                         
                         # 2. 发送 AITuber 消息（使用 AITUBER_RECEIVE_TEXT 类型，符合 Ortensia 协议）

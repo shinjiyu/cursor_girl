@@ -17,6 +17,18 @@ from datetime import datetime
 from typing import Dict, Set, Optional
 import time
 
+# ⚠️ 必须在任何 logging 调用之前配置！
+# 配置日志 - DEBUG 级别用于调试
+logging.basicConfig(
+    level=logging.DEBUG,  # 🔧 改为 DEBUG 级别，显示更多信息
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# 降低 websockets 库的日志级别（避免太多噪音）
+logging.getLogger('websockets').setLevel(logging.WARNING)
+
 # 导入新协议
 from protocol import (
     Message,
@@ -33,16 +45,7 @@ try:
     TTS_AVAILABLE = True
 except ImportError:
     TTS_AVAILABLE = False
-    logging.warning("⚠️  TTS Manager 不可用，TTS 功能将被禁用")
-
-
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s: %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+    logger.warning("⚠️  TTS Manager 不可用，TTS 功能将被禁用")
 
 
 # ============================================================================
@@ -231,8 +234,11 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
     """处理新协议消息"""
     msg_type = message.type
     
-    # 🔍 调试：打印更详细的消息信息
-    logger.info(f"📨 [{client_info.client_id}] {msg_type.value} (to: {message.to}, from: {message.from_})")
+    # 🔧 增强日志：显示完整的收包信息
+    logger.info(f"📨 [收包] {msg_type.value}")
+    logger.debug(f"    from: {message.from_}")
+    logger.debug(f"    to: {message.to or 'broadcast'}")
+    logger.debug(f"    payload: {str(message.payload)[:200]}...")
     
     try:
         if msg_type == MessageType.REGISTER:
@@ -292,6 +298,13 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         elif msg_type == MessageType.CURSOR_INPUT_TEXT_RESULT:
             await route_message(message)  # 结果转发回发送者
         
+        # 🆕 Conversation ID 查询（V10）
+        elif msg_type == MessageType.GET_CONVERSATION_ID:
+            await handle_get_conversation_id(client_info, message)
+        
+        elif msg_type == MessageType.GET_CONVERSATION_ID_RESULT:
+            await route_message(message)  # 转发给请求者
+        
         # 通用 JavaScript 执行
         elif msg_type == MessageType.EXECUTE_JS:
             await route_message(message)  # 转发给 inject
@@ -301,13 +314,6 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
             if not await handle_execute_js_result_for_discovery(message):
                 # 不是 discovery 请求，正常转发
                 await route_message(message)
-        
-        # Conversation 发现（V11.3 新增）
-        elif msg_type == MessageType.GET_CONVERSATION_ID:
-            await handle_get_conversation_id(client_info, message)
-        
-        elif msg_type == MessageType.GET_CONVERSATION_ID_RESULT:
-            await route_message(message)  # 结果转发回发送者（通常是 AITuber）
         
         else:
             logger.warning(f"⚠️  未知消息类型: {msg_type.value}")
@@ -462,15 +468,14 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     """处理 Hook 发来的 aituber_receive_text 消息
     
     V11: 移除映射管理，改用动态查询
-    V12: 只在特定事件时生成 TTS（开始任务、任务结束）
     
     功能：
-    1. 生成 TTS 音频（仅限特定事件）
+    1. 生成 TTS 音频（如果 TTS 可用）
     2. 将消息（含音频）转发给所有 AITuber 客户端
     
     工作流程:
     1. 提取文本和情绪
-    2. 检查事件类型，决定是否生成 TTS
+    2. 使用 TTS 生成音频文件
     3. 将音频文件路径添加到消息中
     4. 转发给所有 AITuber 客户端
     """
@@ -491,19 +496,11 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
         logger.warning(f"⚠️  目标客户端不存在: aituber")
         return
     
-    # 3. 提取消息信息
+    # 4. 生成 TTS 音频（如果 TTS 可用）
     text = payload.get('text', '')
     emotion = payload.get('emotion', 'neutral')
-    event_type = payload.get('event_type') or payload.get('hook_name', '')
     
-    # 🆕 只有这些事件才播放语音（开始任务、任务结束）
-    TTS_ENABLED_EVENTS = ['beforeSubmitPrompt', 'stop']
-    should_generate_tts = event_type in TTS_ENABLED_EVENTS
-    
-    logger.info(f"   事件类型: {event_type}, 生成TTS: {should_generate_tts}")
-    
-    # 4. 生成 TTS 音频（仅限特定事件）
-    if text and tts_manager and should_generate_tts:
+    if text and tts_manager:
         try:
             logger.info(f"🎤 生成 TTS: {text[:30]}... (emotion: {emotion})")
             
@@ -521,8 +518,6 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
         except Exception as e:
             logger.error(f"❌ TTS 生成失败: {e}")
             # TTS 失败不影响消息转发，继续执行
-    elif text and not should_generate_tts:
-        logger.info(f"📝 [跳过TTS] 事件 '{event_type}' 只显示文本，不播放语音")
     
     # ✨ 将 conversation_id 添加到 payload 中
     message.payload['conversation_id'] = conversation_id
@@ -536,11 +531,247 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
             logger.error(f"❌ [AITuber] 转发失败: {aituber.client_id}, {e}")
 
 
+async def handle_get_conversation_id(client_info: ClientInfo, message: Message):
+    """
+    处理 GET_CONVERSATION_ID 请求（V11.3 正确实现）
+    通过生成 JavaScript 代码来查询所有窗口的 conversation_id
+    """
+    from_id = message.from_
+    request_id = message.payload.get('request_id', f"discover_{int(time.time())}")
+    
+    logger.info(f"🔍 [Discovery] 收到 conversation_id 查询请求: {request_id} (from={from_id})")
+    
+    # 找到一个 inject 客户端
+    inject_clients = registry.get_by_type("cursor_inject")
+    
+    if not inject_clients:
+        logger.warning(f"⚠️  找不到 Cursor inject 客户端")
+        # 返回空结果
+        error_msg = MessageBuilder.get_conversation_id_result(
+            from_id="server",
+            to_id=from_id,
+            request_id=request_id,
+            success=False,
+            conversation_id=None,
+            error="没有可用的 Cursor inject"
+        )
+        await client_info.websocket.send(error_msg.to_json())
+        return
+    
+    # 使用第一个 inject 客户端（广播模式）
+    target_inject = inject_clients[0]
+    
+    # 生成在渲染进程 DOM 中执行的 JavaScript 代码（与 cursor_input_text 相同的方式）
+    # 这段代码会被 inject 在每个窗口的渲染进程中执行（广播模式）
+    js_code = """(() => {
+    const el = document.querySelector('[id^="composer-bottom-add-context-"]');
+    if (!el) {
+        return JSON.stringify({ 
+            found: false, 
+            conversationId: null,
+            title: null
+        });
+    }
+    
+    const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+    const conversationId = match ? match[1] : null;
+    
+    // 获取窗口标题
+    let title = document.querySelector('.window-title')?.textContent?.trim();
+    if (!title) {
+        title = document.querySelector('.titlebar-center')?.textContent?.trim();
+    }
+    // 清理标题（移除 "AgentsEditor" 等前缀）
+    if (title) {
+        title = title.replace(/^AgentsEditor\\s*/, '').trim();
+    }
+    if (!title) {
+        title = 'Untitled Conversation';
+    }
+    
+    return JSON.stringify({ 
+        found: true, 
+        conversationId: conversationId,
+        title: title,
+        elementId: el.id
+    });
+})()"""
+    
+    # 通过 EXECUTE_JS 发送
+    execute_msg = MessageBuilder.execute_js(
+        from_id="server",
+        to_id=target_inject.client_id,
+        code=js_code,
+        request_id=f"get_conv_id_{request_id}",
+        window_index=None,
+        conversation_id=None
+    )
+    
+    # 存储原始请求者信息，用于转发结果
+    # 使用 request_id 作为 key，存储发送者信息
+    if not hasattr(handle_get_conversation_id, 'pending_requests'):
+        handle_get_conversation_id.pending_requests = {}
+    
+    handle_get_conversation_id.pending_requests[f"get_conv_id_{request_id}"] = {
+        'requester_id': from_id,
+        'original_request_id': request_id
+    }
+    
+    await target_inject.websocket.send(execute_msg.to_json())
+    logger.info(f"📤 [Discovery] 已发送查询脚本到 inject: {target_inject.client_id}")
+
+
+async def handle_execute_js_result_for_discovery(message: Message):
+    """
+    处理 conversation_id 查询的结果
+    返回 True 表示已处理（是 discovery 请求），False 表示不是 discovery 请求
+    """
+    request_id = message.payload.get('request_id', '')
+    
+    # 检查是否是 discovery 请求的结果
+    if not request_id.startswith('get_conv_id_'):
+        return False
+    
+    if not hasattr(handle_get_conversation_id, 'pending_requests'):
+        return False
+    
+    pending = handle_get_conversation_id.pending_requests.get(request_id)
+    if not pending:
+        logger.debug(f"⚠️  [Discovery] 未找到待处理请求: {request_id}")
+        return False
+    
+    # 移除待处理请求
+    del handle_get_conversation_id.pending_requests[request_id]
+    
+    requester_id = pending['requester_id']
+    original_request_id = pending['original_request_id']
+    
+    # 解析结果
+    success = message.payload.get('success', False)
+    result_data = message.payload.get('result', {})
+    
+    logger.info(f"📨 [Discovery] 收到查询结果: success={success}, type={type(result_data)}")
+    
+    if not success:
+        # 执行失败
+        error_msg = MessageBuilder.get_conversation_id_result(
+            from_id="server",
+            to_id=requester_id,
+            request_id=original_request_id,
+            success=False,
+            conversation_id=None,
+            error=message.payload.get('error', '查询失败')
+        )
+        
+        requester = registry.get_by_id(requester_id)
+        if requester:
+            await requester.websocket.send(error_msg.to_json())
+        return True
+    
+    # 🔍 打印原始结果用于调试
+    logger.debug(f"🔍 [DEBUG] Inject 返回的原始结果类型: {type(result_data)}")
+    logger.debug(f"🔍 [DEBUG] Inject 返回的原始结果: {result_data}")
+    
+    # 解析广播模式的结果：{0: result0, 1: result1, ...}
+    conversations = []
+    total_windows = 0
+    
+    try:
+        if isinstance(result_data, dict):
+            # 广播模式：遍历每个窗口的结果
+            for window_idx_str, window_result in result_data.items():
+                try:
+                    window_idx = int(window_idx_str)
+                    total_windows += 1
+                    
+                    logger.debug(f"  🔍 Window [{window_idx}]: {window_result}")
+                    
+                    # 检查是否是错误
+                    if isinstance(window_result, dict) and 'error' in window_result:
+                        logger.debug(f"    ❌ 错误: {window_result['error']}")
+                        continue
+                    
+                    # 尝试解析窗口结果
+                    if isinstance(window_result, str):
+                        try:
+                            parsed = json.loads(window_result)
+                        except json.JSONDecodeError:
+                            logger.warning(f"    ⚠️  无法解析 JSON: {window_result}")
+                            continue
+                    else:
+                        parsed = window_result
+                    
+                    # 提取 conversation_id 和 title
+                    if isinstance(parsed, dict):
+                        conv_id = parsed.get('conversationId')
+                        title = parsed.get('title', 'Untitled Conversation')
+                        if conv_id:
+                            conversations.append({
+                                'conversation_id': conv_id,
+                                'title': title,
+                                'window_index': window_idx
+                            })
+                            logger.info(f"    ✅ 找到对话: {title} ({conv_id[:8]}...)")
+                        else:
+                            logger.debug(f"    ⚠️  未找到 conversation_id (found={parsed.get('found')})")
+                    
+                except ValueError:
+                    # 不是数字索引，跳过
+                    continue
+                except Exception as e:
+                    logger.warning(f"    ⚠️  解析窗口 {window_idx_str} 失败: {e}")
+                    continue
+        
+        logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话（共 {total_windows} 个窗口）")
+        
+        # 为每个 conversation_id 发送一个结果消息
+        requester = registry.get_by_id(requester_id)
+        if requester:
+            if conversations:
+                for conv in conversations:
+                    conv_id = conv.get('conversation_id')
+                    title = conv.get('title', 'Untitled Conversation')
+                    window_index = conv.get('window_index')
+                    
+                    result_msg = MessageBuilder.get_conversation_id_result(
+                        from_id="server",
+                        to_id=requester_id,
+                        request_id=original_request_id,
+                        success=True,
+                        conversation_id=conv_id,
+                        title=title,
+                        window_index=window_index
+                    )
+                    await requester.websocket.send(result_msg.to_json())
+                    logger.info(f"📤 [Discovery] 发送结果: {title} → {requester_id}")
+            else:
+                # 没有找到对话，发送空结果
+                empty_msg = MessageBuilder.get_conversation_id_result(
+                    from_id="server",
+                    to_id=requester_id,
+                    request_id=original_request_id,
+                    success=True,
+                    conversation_id=None,
+                    title=None
+                )
+                await requester.websocket.send(empty_msg.to_json())
+                logger.info(f"📤 [Discovery] 发送空结果（无对话）→ {requester_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ [Discovery] 解析结果失败: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return True
+
+
 async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
     """处理从 AITuber 发来的 cursor_input_text 消息
     
-    V11.2: 生成包含 conversation_id 检查的 JavaScript 代码，广播到所有窗口
-    只有匹配的窗口会真正执行输入操作
+    V11 新方案：
+    1. 先查询所有窗口的 conversation_id（不指定 window_index）
+    2. 从结果中找到匹配的 window_index
+    3. 使用指定的 window_index 发送命令
     """
     from_id = message.from_
     text = message.payload.get('text', '')
@@ -566,48 +797,49 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
     
     # 使用第一个可用的 inject（一般情况下只有一个）
     target_inject = inject_clients[0]
+    window_index = None  # 默认不指定窗口（广播）
+    
+    # 如果指定了 conversation_id，先查询找到对应的窗口索引
+    if conversation_id:
+        logger.info(f"🔍 [Cursor Input] 查询 conversation_id 对应的窗口...")
+        
+        query_code = '''
+        (() => {
+            const el = document.querySelector('[id^="composer-bottom-add-context-"]');
+            if (!el) return JSON.stringify({ found: false });
+            const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
+            return JSON.stringify({ found: true, conversation_id: match ? match[1] : null });
+        })()
+        '''
+        
+        # 发送查询请求（不指定 window_index，查询所有窗口）
+        query_msg = MessageBuilder.execute_js(
+            from_id="server",
+            to_id=target_inject.client_id,
+            code=query_code,
+            request_id=f"query_conv_{int(time.time())}",
+            window_index=None  # 不指定，查询所有窗口
+        )
+        
+        await target_inject.websocket.send(query_msg.to_json())
+        
+        # 等待查询结果（简单实现：等待 1 秒）
+        # TODO: 改进为基于回调的异步等待
+        import asyncio
+        await asyncio.sleep(1)
+        
+        # 注意：这里需要从某处获取查询结果
+        # 暂时使用 None，表示广播到所有窗口
+        # 完整实现需要建立请求-响应的映射机制
     
     if target_inject:
         try:
             # 生成 JavaScript 代码来输入文本
-            # V11.2: 代码包含 conversation_id 检查，只在匹配的窗口执行
+            # 使用模拟键盘输入的方式，适用于 Lexical 等复杂编辑器
             import json
-            
-            # 如果指定了 conversation_id，添加检查逻辑
-            conv_check_code = ""
-            if conversation_id:
-                conv_check_code = f"""
-                    // 🔍 检查当前窗口的 conversation_id
-                    const expectedConvId = {json.dumps(conversation_id)};
-                    const convElement = document.querySelector('[id^="composer-bottom-add-context-"]');
-                    
-                    if (!convElement) {{
-                        return JSON.stringify({{
-                            skipped: true,
-                            reason: '未找到 conversation_id 元素'
-                        }});
-                    }}
-                    
-                    const match = convElement.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
-                    const currentConvId = match ? match[1] : null;
-                    
-                    if (currentConvId !== expectedConvId) {{
-                        return JSON.stringify({{
-                            skipped: true,
-                            reason: 'conversation_id 不匹配',
-                            expected: expectedConvId,
-                            current: currentConvId
-                        }});
-                    }}
-                    
-                    // ✅ conversation_id 匹配，继续执行
-                """
-            
             js_code = f"""
             (async function() {{
                 try {{
-                    {conv_check_code}
-                    
                     // 查找 Composer 输入框
                     const inputSelector = 'div[contenteditable="true"][role="textbox"],' +
                                          'div[contenteditable="true"][aria-label*="composer"],' +
@@ -729,14 +961,13 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
             }})()
             """
             
-            # 发送 execute_js 消息给 inject（广播模式，不指定任何窗口参数）
-            # V11.2: conversation_id 检查逻辑已在 js_code 中，无需传递给 inject
+            # 发送 execute_js 消息给 inject（包含 window_index）
             execute_msg = MessageBuilder.execute_js(
                 from_id="server",
                 to_id=target_inject.client_id,
                 code=js_code,
-                request_id=f"input_text_{from_id}_{int(time.time())}"
-                # 不传递 window_index 和 conversation_id，让 inject 广播到所有窗口
+                request_id=f"input_text_{from_id}_{int(time.time())}",
+                window_index=window_index  # V11: 使用 window_index 代替 conversation_id
             )
             
             await target_inject.websocket.send(execute_msg.to_json())
@@ -773,254 +1004,22 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
         await client_info.websocket.send(error_msg.to_json())
 
 
-async def handle_get_conversation_id(client_info: ClientInfo, message: Message):
-    """
-    处理 GET_CONVERSATION_ID 请求（V11.3 新增）
-    通过生成 JavaScript 代码来查询所有窗口的 conversation_id
-    """
-    from_id = message.from_
-    request_id = message.payload.get('request_id', f"discover_{int(time.time())}")
-    
-    logger.info(f"🔍 [Discovery] 收到 conversation_id 查询请求: {request_id} (from={from_id})")
-    
-    # 找到一个 inject 客户端
-    inject_clients = registry.get_by_type("cursor_inject")
-    
-    if not inject_clients:
-        logger.warning(f"⚠️  找不到 Cursor inject 客户端")
-        # 返回空结果
-        error_msg = MessageBuilder.get_conversation_id_result(
-            from_id="server",
-            to_id=from_id,
-            request_id=request_id,
-            success=False,
-            conversation_id=None,
-            error="没有可用的 Cursor inject"
-        )
-        await client_info.websocket.send(error_msg.to_json())
-        return
-    
-    # 使用第一个 inject 客户端（广播模式）
-    target_inject = inject_clients[0]
-    
-    # 生成在渲染进程 DOM 中执行的 JavaScript 代码（与 cursor_input_text 相同的方式）
-    # 这段代码会被 inject 在每个窗口的渲染进程中执行（广播模式）
-    js_code = """(() => {
-    const el = document.querySelector('[id^="composer-bottom-add-context-"]');
-    if (!el) {
-        return JSON.stringify({ 
-            found: false, 
-            conversationId: null,
-            title: null
-        });
-    }
-    
-    const match = el.id.match(/composer-bottom-add-context-([a-f0-9-]+)/);
-    const conversationId = match ? match[1] : null;
-    
-    // 获取窗口标题
-    let title = document.querySelector('.window-title')?.textContent?.trim();
-    if (!title) {
-        title = document.querySelector('.titlebar-center')?.textContent?.trim();
-    }
-    // 清理标题（移除 "AgentsEditor" 等前缀）
-    if (title) {
-        title = title.replace(/^AgentsEditor\\s*/, '').trim();
-    }
-    if (!title) {
-        title = 'Untitled Conversation';
-    }
-    
-    return JSON.stringify({ 
-        found: true, 
-        conversationId: conversationId,
-        title: title,
-        elementId: el.id
-    });
-})()"""
-    
-    # 通过 EXECUTE_JS 发送
-    execute_msg = MessageBuilder.execute_js(
-        from_id="server",
-        to_id=target_inject.client_id,
-        code=js_code,
-        request_id=f"get_conv_id_{request_id}",
-        window_index=None,
-        conversation_id=None
-    )
-    
-    # 存储原始请求者信息，用于转发结果
-    # 使用 request_id 作为 key，存储发送者信息
-    if not hasattr(handle_get_conversation_id, 'pending_requests'):
-        handle_get_conversation_id.pending_requests = {}
-    
-    handle_get_conversation_id.pending_requests[f"get_conv_id_{request_id}"] = {
-        'requester_id': from_id,
-        'original_request_id': request_id
-    }
-    
-    await target_inject.websocket.send(execute_msg.to_json())
-    logger.info(f"📤 [Discovery] 已发送查询脚本到 inject: {target_inject.client_id}")
-
-
-async def handle_execute_js_result_for_discovery(message: Message):
-    """
-    处理 conversation_id 查询的结果
-    """
-    request_id = message.payload.get('request_id', '')
-    
-    # 检查是否是 discovery 请求的结果
-    if not request_id.startswith('get_conv_id_'):
-        return False
-    
-    if not hasattr(handle_get_conversation_id, 'pending_requests'):
-        return False
-    
-    pending = handle_get_conversation_id.pending_requests.get(request_id)
-    if not pending:
-        return False
-    
-    # 移除待处理请求
-    del handle_get_conversation_id.pending_requests[request_id]
-    
-    requester_id = pending['requester_id']
-    original_request_id = pending['original_request_id']
-    
-    # 解析结果
-    success = message.payload.get('success', False)
-    result_data = message.payload.get('result', {})  # 已经是 dict，不需要 json.loads()
-    
-    logger.info(f"📨 [Discovery] 收到查询结果: success={success}, type={type(result_data)}")
-    
-    if not success:
-        # 执行失败
-        error_msg = MessageBuilder.get_conversation_id_result(
-            from_id="server",
-            to_id=requester_id,
-            request_id=original_request_id,
-            success=False,
-            conversation_id=None,
-            error=message.payload.get('error', '查询失败')
-        )
-        
-        requester = registry.get_by_id(requester_id)
-        if requester:
-            await requester.websocket.send(error_msg.to_json())
-        return True
-    
-    # 🔍 打印原始结果用于调试
-    logger.info(f"🔍 [DEBUG] Inject 返回的原始结果类型: {type(result_data)}")
-    logger.info(f"🔍 [DEBUG] Inject 返回的原始结果: {result_data}")
-    
-    # 解析广播模式的结果：{0: result0, 1: result1, ...}
-    conversations = []
-    total_windows = 0
-    
-    try:
-        if isinstance(result_data, dict):
-            # 广播模式：遍历每个窗口的结果
-            for window_idx_str, window_result in result_data.items():
-                try:
-                    window_idx = int(window_idx_str)
-                    total_windows += 1
-                    
-                    logger.info(f"  🔍 Window [{window_idx}]: {window_result}")
-                    
-                    # 检查是否是错误
-                    if isinstance(window_result, dict) and 'error' in window_result:
-                        logger.info(f"    ❌ 错误: {window_result['error']}")
-                        continue
-                    
-                    # 尝试解析窗口结果
-                    if isinstance(window_result, str):
-                        try:
-                            parsed = json.loads(window_result)
-                        except json.JSONDecodeError:
-                            logger.warning(f"    ⚠️  无法解析 JSON: {window_result}")
-                            continue
-                    else:
-                        parsed = window_result
-                    
-                    # 提取 conversation_id 和 title
-                    if isinstance(parsed, dict):
-                        conv_id = parsed.get('conversationId')
-                        title = parsed.get('title', 'Untitled Conversation')
-                        if conv_id:
-                            conversations.append({
-                                'conversation_id': conv_id,
-                                'title': title,
-                                'window_index': window_idx
-                            })
-                            logger.info(f"    ✅ 找到对话: {title} ({conv_id[:8]}...)")
-                        else:
-                            logger.info(f"    ⚠️  未找到 conversation_id (found={parsed.get('found')})")
-                    
-                except ValueError:
-                    # 不是数字索引，跳过
-                    continue
-                except Exception as e:
-                    logger.warning(f"    ⚠️  解析窗口 {window_idx_str} 失败: {e}")
-                    continue
-        
-        logger.info(f"✅ [Discovery] 找到 {len(conversations)} 个对话（共 {total_windows} 个窗口）")
-        
-        # 为每个 conversation_id 发送一个结果消息
-        requester = registry.get_by_id(requester_id)
-        if requester:
-            for conv in conversations:
-                conv_id = conv.get('conversation_id')
-                title = conv.get('title', 'Untitled Conversation')
-                window_index = conv.get('window_index')
-                
-                result_msg = MessageBuilder.get_conversation_id_result(
-                    from_id="server",
-                    to_id=requester_id,
-                    request_id=original_request_id,
-                    success=True,
-                    conversation_id=conv_id,
-                    title=title,
-                    window_index=window_index
-                )
-                await requester.websocket.send(result_msg.to_json())
-                logger.info(f"  📤 发送结果: {title} ({conv_id[:8]}... window {window_index})")
-        
-        return True
-    except Exception as e:
-        logger.error(f"❌ [Discovery] 解析结果失败: {e}")
-        error_msg = MessageBuilder.get_conversation_id_result(
-            from_id="server",
-            to_id=requester_id,
-            request_id=original_request_id,
-            success=False,
-            conversation_id=None,
-            error=f"解析结果失败: {str(e)}"
-        )
-        requester = registry.get_by_id(requester_id)
-        if requester:
-            await requester.websocket.send(error_msg.to_json())
-        return True
-
-
 async def route_message(message: Message):
-    """路由消息到指定客户端（支持按ID或类型路由）"""
+    """路由消息到指定客户端"""
     target_id = message.to
+    
+    logger.debug(f"🔀 [路由] 开始路由消息: {message.type.value}")
+    logger.debug(f"    from: {message.from_} → to: {target_id}")
     
     if not target_id or target_id == "":
         logger.warning(f"⚠️  消息没有指定目标，忽略")
         return
     
-    # 先尝试按ID查找
     target_client = registry.get_by_id(target_id)
     
-    # 如果找不到，尝试按类型查找（取第一个）
     if not target_client:
-        clients_by_type = registry.get_by_type(target_id)
-        if clients_by_type:
-            target_client = clients_by_type[0]
-            logger.info(f"🔍 按类型路由: {target_id} → {target_client.client_id}")
-    
-    if not target_client:
-        logger.warning(f"⚠️  目标客户端不存在（ID或类型）: {target_id}")
+        logger.warning(f"⚠️  目标客户端不存在: {target_id}")
+        logger.debug(f"    当前已注册客户端: {list(registry.clients.keys())}")
         
         # 发送错误响应（如果是命令消息）
         if message.type in [MessageType.COMPOSER_SEND_PROMPT, MessageType.COMPOSER_QUERY_STATUS]:
@@ -1040,15 +1039,21 @@ async def route_message(message: Message):
     
     # 发送消息
     try:
-        await target_client.websocket.send(message.to_json())
-        logger.info(f"📤 路由消息: {message.from_} → {target_client.client_id} ({message.type.value})")
+        msg_json = message.to_json()
+        await target_client.websocket.send(msg_json)
+        logger.info(f"📤 [发包] {message.type.value}: {message.from_} → {target_id}")
+        logger.debug(f"    payload: {str(message.payload)[:200]}...")
     except Exception as e:
         logger.error(f"❌ 发送消息失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 
 async def broadcast_event(message: Message):
     """广播事件到所有客户端（除了发送者）"""
     sender_id = message.from_
+    
+    logger.debug(f"📡 [广播] 开始广播: {message.type.value} from {sender_id}")
     
     # 获取所有客户端（排除发送者）
     targets = [c for c in registry.clients.values() if c.client_id != sender_id]
@@ -1056,6 +1061,8 @@ async def broadcast_event(message: Message):
     if not targets:
         logger.info(f"ℹ️  没有其他客户端，跳过广播")
         return
+    
+    logger.debug(f"    目标客户端: {[c.client_id for c in targets]}")
     
     message_json = message.to_json()
     
@@ -1066,7 +1073,12 @@ async def broadcast_event(message: Message):
     )
     
     success_count = sum(1 for r in results if not isinstance(r, Exception))
-    logger.info(f"📡 广播事件: {message.type.value} → {success_count}/{len(targets)} 客户端")
+    logger.info(f"📡 [广播] {message.type.value} → {success_count}/{len(targets)} 客户端")
+    
+    # 记录失败的发送
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"    ❌ 发送到 {targets[i].client_id} 失败: {result}")
 
 
 async def handle_legacy_message(websocket, data: dict):
@@ -1121,7 +1133,9 @@ async def handle_legacy_message(websocket, data: dict):
 async def handle_client(websocket):
     """处理客户端连接"""
     client_addr = websocket.remote_address
-    logger.info(f"✅ 新连接: {client_addr}")
+    logger.info(f"=" * 50)
+    logger.info(f"✅ [连接] 新客户端连接: {client_addr}")
+    logger.debug(f"    当前客户端数: {len(registry.clients)}")
     
     # 创建临时客户端信息（等待注册）
     temp_id = f"temp-{id(websocket)}"
@@ -1136,6 +1150,9 @@ async def handle_client(websocket):
     try:
         async for message_str in websocket:
             try:
+                # 🔧 记录原始消息（调试用）
+                logger.debug(f"📥 [原始] 收到消息: {message_str[:300]}...")
+                
                 data = json.loads(message_str)
                 
                 # 检测协议类型

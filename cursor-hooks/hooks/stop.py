@@ -32,8 +32,6 @@ class StopAgentHook(StopHook):
                 "Agent 任务完成了！太棒了！🎉",
                 emotion="excited"
             )
-            # 🆕 发送 AGENT_COMPLETED 事件（用于触发自动任务检查）
-            self.send_agent_completed_event()
         elif status == "aborted":
             self.send_to_ortensia(
                 "Agent 任务被中止了",
@@ -53,62 +51,6 @@ class StopAgentHook(StopHook):
         #     return "继续优化代码"
         
         return None  # 不继续
-    
-    def send_agent_completed_event(self) -> None:
-        """发送 AGENT_COMPLETED 事件到中央服务器（独立连接，避免 TTS 阻塞）"""
-        try:
-            import websockets
-            import asyncio
-            import time
-            import json
-            
-            conversation_id = self.input_data.get('conversation_id', 'unknown')
-            client_id = f"hook-{conversation_id}"
-            
-            async def send_event():
-                try:
-                    # 🔧 使用更长的超时时间（5秒），因为服务器可能在处理 TTS
-                    async with websockets.connect(
-                        self.ws_server, 
-                        open_timeout=5,  # 连接超时 5 秒
-                        close_timeout=2   # 关闭超时 2 秒
-                    ) as websocket:
-                        # 1. 注册
-                        register_msg = {
-                            "type": "register",
-                            "from": client_id,
-                            "to": None,
-                            "timestamp": int(time.time() * 1000),
-                            "payload": {"client_type": "agent_hook"}
-                        }
-                        await websocket.send(json.dumps(register_msg))
-                        
-                        # 🔧 增加超时到 5 秒（服务器可能因 TTS 生成而阻塞）
-                        await asyncio.wait_for(websocket.recv(), timeout=5.0)
-                        
-                        # 2. 发送 AGENT_COMPLETED 事件
-                        event_msg = {
-                            "type": "agent_completed",
-                            "from": client_id,
-                            "to": "",  # 广播
-                            "timestamp": int(time.time() * 1000),
-                            "payload": {
-                                "agent_id": "default",
-                                "result": "success",
-                                "conversation_id": conversation_id,  # 🆕 添加 conversation_id
-                                "summary": "任务已完成"
-                            }
-                        }
-                        await websocket.send(json.dumps(event_msg))
-                        self.logger.info(f"✅ AGENT_COMPLETED 事件已发送 (conv: {conversation_id})")
-                except asyncio.TimeoutError:
-                    self.logger.error("❌ WebSocket 连接超时（服务器可能繁忙）")
-                except Exception as e:
-                    self.logger.error(f"❌ WebSocket 连接失败: {e}")
-            
-            asyncio.run(send_event())
-        except Exception as e:
-            self.logger.error(f"❌ 发送 AGENT_COMPLETED 事件失败: {e}")
 
 
 if __name__ == "__main__":

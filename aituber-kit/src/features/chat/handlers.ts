@@ -12,7 +12,7 @@ import i18next from 'i18next'
 import toastStore from '@/features/stores/toast'
 import { generateMessageId } from '@/utils/messageUtils'
 import { isMultiModalAvailable } from '@/features/constants/aiModels'
-import { useConversationStore } from '@/features/stores/conversationStore'
+// 注意：消息添加到 conversationStore 由 assistant.tsx 的 handleAituberReceiveText 统一处理
 
 // セッションIDを生成する関数
 const generateSessionId = () => generateMessageId()
@@ -872,22 +872,11 @@ export const handleReceiveTextFromWsFn =
       return
     }
 
-    // 如果有 conversation_id，将消息添加到对应的 conversation
+    // ⚠️ 注意：不要在这里添加消息到 conversationStore
+    // assistant.tsx 的 handleAituberReceiveText 已经负责将消息添加到 conversationStore
+    // 这里只负责 TTS 语音播放和 homeStore 更新（向后兼容）
     if (conversation_id) {
-      const conversationStore = useConversationStore.getState()
-      
-      // 获取或创建 conversation
-      console.log(`🆕 [handleReceiveTextFromWs] Getting or creating conversation: ${conversation_id}`)
-      conversationStore.getOrCreateConversation(conversation_id)
-      
-      // 添加消息到 conversation
-      conversationStore.addMessage(conversation_id, {
-        role: role === 'assistant' ? 'assistant' : role === 'user' ? 'user' : 'system',
-        content: text,
-        timestamp: Date.now()
-      })
-      
-      console.log(`✅ [handleReceiveTextFromWs] Message added to conversation ${conversation_id}`)
+      console.log(`📝 [handleReceiveTextFromWs] conversation_id=${conversation_id} (消息由 assistant.tsx 处理)`)
     }
 
     homeStore.setState({ chatProcessing: true })

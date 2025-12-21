@@ -26,33 +26,23 @@ if lsof -i :8765 &> /dev/null; then
     exit 0
 fi
 
-# 启动中央服务器（使用 ChatTTS 虚拟环境）
-echo -e "${BLUE}🚀 启动中央 WebSocket 服务器 (ChatTTS)...${NC}"
+# 启动中央服务器
+echo -e "${BLUE}🚀 启动中央 WebSocket 服务器...${NC}"
 cd "$PROJECT_DIR/bridge"
 
-# ChatTTS 虚拟环境路径
-CHATTTS_VENV="/Users/user/Documents/tts/chattts/venv"
-
-# 检查虚拟环境是否存在
-if [ ! -d "$CHATTTS_VENV" ]; then
-    echo -e "${RED}❌ ChatTTS 虚拟环境未找到: $CHATTTS_VENV${NC}"
-    echo -e "${YELLOW}请先安装 ChatTTS 或修改路径${NC}"
-    exit 1
+# 检查 Python 依赖
+if ! python3 -c "import websockets" 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  检测到 websockets 未安装${NC}"
+    echo -e "${BLUE}正在安装依赖...${NC}"
+    pip3 install websockets --user --break-system-packages
 fi
 
-# 启动服务器（使用 ChatTTS 虚拟环境）
-source "$CHATTTS_VENV/bin/activate"
-python websocket_server.py > /tmp/ws_server.log 2>&1 &
+# 启动服务器
+python3 websocket_server.py > /tmp/ws_server.log 2>&1 &
 SERVER_PID=$!
 
-# 等待服务器启动（ChatTTS 加载模型需要 4-6 秒）
-echo -e "${YELLOW}⏳ 等待 ChatTTS 模型加载...${NC}"
-for i in {1..10}; do
-    if lsof -i :8765 &> /dev/null; then
-        break
-    fi
-    sleep 1
-done
+# 等待服务器启动
+sleep 2
 
 # 检查服务器是否成功启动
 if lsof -i :8765 &> /dev/null; then

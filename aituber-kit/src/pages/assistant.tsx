@@ -19,6 +19,9 @@ const WebSocketManager = dynamic(
   { ssr: false }
 )
 
+// 🚀 目标 VRM 模型路径（オルテンシア）
+const TARGET_VRM_PATH = '/vrm/ortensia.vrm'
+
 /**
  * 透明悬浮窗助手页面
  * 只显示 VRM 角色，背景透明
@@ -31,14 +34,29 @@ export default function AssistantPage() {
   const conversationStore = useConversationStore()
   const [autoChecker] = useState(() => new AutoTaskChecker())
   
+  // ✅ 在组件渲染前设置目标模型路径（避免双重加载）
+  // 这样 VrmViewer 初始化时就会直接使用目标模型
+  if (typeof window !== 'undefined') {
+    const currentPath = settingsStore.getState().selectedVrmPath
+    if (currentPath !== TARGET_VRM_PATH) {
+      console.log(`🎭 [Pre-init] 设置目标模型: ${currentPath} → ${TARGET_VRM_PATH}`)
+      settingsStore.setState({ selectedVrmPath: TARGET_VRM_PATH })
+    }
+  }
+  
   // 🆕 切换迷你模式
   const toggleMiniMode = useCallback(() => {
     const newMiniMode = !isMiniMode
     setIsMiniMode(newMiniMode)
     
     // 通知 Electron 切换窗口大小
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      (window as any).electronAPI.toggleMiniMode(newMiniMode)
+    if (typeof window !== 'undefined') {
+      const electronAPI = (window as any).electronAPI
+      if (electronAPI && typeof electronAPI.toggleMiniMode === 'function') {
+        electronAPI.toggleMiniMode(newMiniMode)
+      } else {
+        console.warn('⚠️ electronAPI.toggleMiniMode 不可用，请重启应用')
+      }
     }
   }, [isMiniMode])
 
@@ -57,44 +75,7 @@ export default function AssistantPage() {
       selectLanguage: 'ja',
     })
     console.log('✅ External linkage mode enabled (TTS: WebSocket Server - ChatTTS)')
-    
-    // 自动加载オルテンシア模型 - 增强版本，带重试
-    let retryCount = 0
-    const maxRetries = 10
-    
-    const loadModel = async () => {
-      const viewer = homeStore.getState().viewer
-      console.log(`📦 尝试 ${retryCount + 1}/${maxRetries}: Viewer ${viewer ? 'exists' : 'not found'}`)
-      
-      if (viewer) {
-        try {
-          console.log('⏳ 开始加载 VRM 模型...')
-          viewer.loadVrm('/vrm/ortensia.vrm')  // 注意：这是同步调用
-          console.log('✅ オルテンシア模型已加载！')
-        } catch (error) {
-          console.error('❌ 模型加载失败:', error)
-          // 尝试加载备用模型
-          console.log('🔄 尝试加载备用模型...')
-          try {
-            viewer.loadVrm('/vrm/AvatarSample_A.vrm')
-            console.log('✅ 备用模型加载成功')
-          } catch (err) {
-            console.error('❌ 备用模型也失败:', err)
-          }
-        }
-      } else {
-        retryCount++
-        if (retryCount < maxRetries) {
-          console.log(`⏳ 等待 viewer 初始化... (${retryCount}/${maxRetries})`)
-          setTimeout(loadModel, 1000) // 每秒重试一次
-        } else {
-          console.error('❌ Viewer 初始化超时，请刷新页面')
-        }
-      }
-    }
-
-    // 延迟 3 秒开始加载
-    setTimeout(loadModel, 3000)
+    console.log(`✅ VRM 模型将直接使用: ${TARGET_VRM_PATH}（无需二次加载）`)
 
     // 启用外部连接模式
     settingsStore.setState({ externalLinkageMode: true })
