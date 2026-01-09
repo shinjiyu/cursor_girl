@@ -24,10 +24,10 @@ cd /path/to/cursorgirl/cursor-hooks
 
 ```powershell
 cd C:\path\to\cursorgirl\cursor-hooks
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1 -Runtime node
 ```
 
-> 需要本机已安装 Python 3.7+ 且 `python` 在 PATH；或使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"`。
+> 推荐 `-Runtime node`（Windows 免 Python）。如需使用 Python：`-Runtime python -PythonPath "C:\Path\to\python.exe"`。
 
 ### 3️⃣ 重启 Cursor（通常不需要）
 
@@ -70,7 +70,7 @@ tail -f /tmp/cursor-agent-hooks.log
 - Windows（PowerShell）:
 
 ```powershell
-Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Encoding utf8 -Wait
 ```
 
 ### 查看中央服务器日志

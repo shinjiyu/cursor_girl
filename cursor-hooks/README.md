@@ -54,12 +54,12 @@ cd /path/to/cursorgirl/cursor-hooks
 在 `cursor-hooks/` 目录下运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1 -Runtime node
 ```
 
 > 如需无提示覆盖已安装版本：`.\deploy.ps1 -Force`
 >
-> Windows 需要本机已安装 Python 3.7+，并且 `python` 在 PATH 中；或者使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"` 指定解释器路径。
+> 默认推荐 `-Runtime node`（Windows 免 Python）。如需继续使用 Python：`-Runtime python -PythonPath "C:\Path\to\python.exe"` 或确保 `python` 在 PATH。
 
 脚本会自动：
 1. ✅ 复制所有 Agent Hooks 到 `~/.cursor-agent/`
@@ -103,7 +103,7 @@ tail -f /tmp/cursor-agent-hooks.log
 - Windows（PowerShell）
 
 ```powershell
-Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Encoding utf8 -Wait
 ```
 
 ### 3. 测试 Hook

@@ -63,12 +63,12 @@ python3   xxx user   x    IPv4 xxxxxx      0t0  TCP localhost:8765 (LISTEN)
 
 ```powershell
 cd C:\path\to\cursorgirl\cursor-hooks
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1 -Runtime node
 ```
 
 > 如需无提示覆盖已安装版本：`.\deploy.ps1 -Force`
 >
-> 需要本机已安装 Python 3.7+ 且 `python` 在 PATH；或使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"`。
+> 推荐 `-Runtime node`（Windows 免 Python）。如需使用 Python：`-Runtime python -PythonPath "C:\Path\to\python.exe"`。
 
 ##### macOS / Linux
 
@@ -266,7 +266,7 @@ tail -f /tmp/cursor-agent-hooks.log
 Windows（PowerShell）可以这样查看：
 
 ```powershell
-Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Encoding utf8 -Wait
 ```
 
 ### 5. 在 Cursor 中触发
