@@ -25,11 +25,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Get-UserHome {
-  $home = [Environment]::GetFolderPath("UserProfile")
-  if ([string]::IsNullOrWhiteSpace($home)) {
+  $userHome = [Environment]::GetFolderPath("UserProfile")
+  if ([string]::IsNullOrWhiteSpace($userHome)) {
     throw "Unable to resolve user profile directory."
   }
-  return $home
+  return $userHome
 }
 
 function Write-Info([string]$msg) { Write-Host $msg }
