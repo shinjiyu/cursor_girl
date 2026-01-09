@@ -11,17 +11,31 @@ import asyncio
 import time
 import hashlib
 import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 
 # 设置日志
-log_file = Path("/tmp/cursor-agent-hooks.log")
+_log_env = os.environ.get("CURSOR_AGENT_HOOKS_LOG")
+if _log_env:
+    log_file = Path(_log_env).expanduser()
+else:
+    # Cross-platform default (Windows: %TEMP%, macOS/Linux: /tmp or equivalent)
+    log_file = Path(tempfile.gettempdir()) / "cursor-agent-hooks.log"
+
+# Ensure parent directory exists before FileHandler opens the file
+try:
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+except Exception:
+    # If we can't create the directory for any reason, logging.FileHandler will surface the error.
+    pass
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='[%(asctime)s] [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler(log_file),
+        logging.FileHandler(log_file, encoding="utf-8"),
         logging.StreamHandler(sys.stderr)  # 错误输出到 stderr
     ]
 )

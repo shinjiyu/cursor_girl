@@ -45,6 +45,7 @@
 ```
 cursor-hooks/
 ├── deploy.sh                   # ✅ 部署脚本（全局安装）
+├── deploy.ps1                  # ✅ 部署脚本（Windows / PowerShell）
 ├── hooks/                      # ✅ Agent Hook 脚本
 │   ├── afterAgentResponse.py   # ✅ Agent 响应后
 │   ├── afterFileEdit.py        # ✅ 文件编辑后
@@ -60,6 +61,7 @@ cursor-hooks/
 │   └── websocket_sender.sh     # ✅ WebSocket 发送工具
 ├── hooks.json                  # ✅ Cursor 配置文件
 ├── run_hook.sh                 # ✅ Hook 包装脚本
+├── run_hook.py                 # ✅ Hook 包装脚本（跨平台）
 ├── requirements.txt            # ✅ Python 依赖
 ├── README.md                   # ✅ 完整文档
 ├── QUICKSTART.md               # ✅ 快速开始
@@ -108,7 +110,7 @@ cursor-hooks/
 ### 部署目标
 - **全局目录**: `~/.cursor-agent/`
 - **配置文件**: `~/.cursor/hooks.json`
-- **日志文件**: `/tmp/cursor-agent-hooks.log`
+- **日志文件**: 系统临时目录下的 `cursor-agent-hooks.log`（可通过 `CURSOR_AGENT_HOOKS_LOG` 覆盖）
 
 ### 系统要求
 - **Cursor**: >= 0.42.0

@@ -11,6 +11,8 @@ cd /path/to/cursorgirl
 
 ### 2️⃣ 安装 Agent Hooks（全局）
 
+#### macOS / Linux
+
 ```bash
 cd /path/to/cursorgirl/cursor-hooks
 ./deploy.sh
@@ -18,9 +20,18 @@ cd /path/to/cursorgirl/cursor-hooks
 
 按 `y` 确认安装。
 
-### 3️⃣ 重启 Cursor
+#### Windows（PowerShell）
 
-**完全退出** Cursor（Cmd+Q），然后重新打开。
+```powershell
+cd C:\path\to\cursorgirl\cursor-hooks
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+
+> 需要本机已安装 Python 3.7+ 且 `python` 在 PATH；或使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"`。
+
+### 3️⃣ 重启 Cursor（通常不需要）
+
+一般情况下 Hook 配置生效不需要重启 Cursor；如果你发现 Hook 没有触发，再尝试完全退出并重新打开 Cursor。
 
 ### 4️⃣ 测试
 
@@ -48,8 +59,18 @@ cat ~/.cursor/hooks.json
 
 ### 实时查看日志
 
+日志文件默认写入系统临时目录下的 `cursor-agent-hooks.log`（也可以设置 `CURSOR_AGENT_HOOKS_LOG` 指定路径）。
+
+- macOS / Linux:
+
 ```bash
 tail -f /tmp/cursor-agent-hooks.log
+```
+
+- Windows（PowerShell）:
+
+```powershell
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
 ```
 
 ### 查看中央服务器日志
@@ -88,7 +109,7 @@ cd /path/to/cursorgirl
 **A:** 
 1. 确认 Cursor 版本 >= 0.42.0
 2. 检查配置：`cat ~/.cursor/hooks.json`
-3. 重启 Cursor（完全退出后重开）
+3. 仍未生效再重启 Cursor（通常不需要）
 
 ### Q: 如何卸载？
 

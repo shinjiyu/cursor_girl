@@ -59,6 +59,19 @@ python3   xxx user   x    IPv4 xxxxxx      0t0  TCP localhost:8765 (LISTEN)
 
 #### 步骤 2: 运行部署脚本
 
+##### Windows（PowerShell）
+
+```powershell
+cd C:\path\to\cursorgirl\cursor-hooks
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+
+> 如需无提示覆盖已安装版本：`.\deploy.ps1 -Force`
+>
+> 需要本机已安装 Python 3.7+ 且 `python` 在 PATH；或使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"`。
+
+##### macOS / Linux
+
 ```bash
 cd /path/to/cursorgirl/cursor-hooks
 ./deploy.sh
@@ -72,9 +85,9 @@ cd /path/to/cursorgirl/cursor-hooks
 5. 创建 Cursor 配置文件
 6. 显示部署摘要
 
-#### 步骤 3: 重启 Cursor
+#### 步骤 3: 重启 Cursor（通常不需要）
 
-**重要**：必须完全退出 Cursor（Cmd+Q），而不是只关闭窗口。
+一般情况下 Hook 配置生效不需要重启 Cursor；如果你发现 Hook 没有触发，再尝试完全退出 Cursor 后重新打开。
 
 ```bash
 # macOS
@@ -175,11 +188,9 @@ self.ws_server = "ws://your-domain.com:8765"
 编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
 
 ```python
-# 第 16 行
-log_file = Path("/tmp/cursor-agent-hooks.log")
-
-# 修改为自定义路径
-log_file = Path("/your/custom/path/hooks.log")
+# 默认：系统临时目录下的 cursor-agent-hooks.log
+# 如需自定义路径，设置环境变量：
+#   CURSOR_AGENT_HOOKS_LOG=/your/custom/path/hooks.log
 ```
 
 ### 启用/禁用特定 Hook
@@ -250,6 +261,12 @@ echo '{"command":"ls -la"}' | python3 ~/.cursor-agent/hooks/beforeShellExecution
 
 ```bash
 tail -f /tmp/cursor-agent-hooks.log
+```
+
+Windows（PowerShell）可以这样查看：
+
+```powershell
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
 ```
 
 ### 5. 在 Cursor 中触发
@@ -353,22 +370,12 @@ pip3 install -r requirements.txt
 
 ### 问题 5: 日志文件没有创建
 
-**症状**：`/tmp/cursor-agent-hooks.log` 不存在
+**症状**：日志文件不存在
 
 **解决方案**：
 
-1. **手动创建**：
-   ```bash
-   touch /tmp/cursor-agent-hooks.log
-   chmod 666 /tmp/cursor-agent-hooks.log
-   ```
-
-2. **检查磁盘空间**：
-   ```bash
-   df -h /tmp
-   ```
-
-3. **使用自定义路径**（见配置选项）
+1. **确认你有权限写入系统临时目录**
+2. **使用自定义路径**：设置 `CURSOR_AGENT_HOOKS_LOG` 指向一个你确定可写的文件路径
 
 ## 卸载
 

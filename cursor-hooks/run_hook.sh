@@ -1,13 +1,24 @@
-#!/bin/bash
-# Agent Hook 包装脚本
-# 用于避免路径中空格导致的权限问题
+#!/usr/bin/env bash
+# Agent Hook wrapper (Unix/macOS)
+# - Avoid hard-coded venv paths
+# - Allow selecting Python via env var CURSOR_AGENT_PYTHON / VENV_PYTHON
 
-# 虚拟环境 Python 路径
-VENV_PYTHON="/Users/user/Documents/ cursorgirl/bridge/venv/bin/python"
+set -euo pipefail
 
-# Hook 脚本路径
-HOOK_SCRIPT="$1"
+HOOK_SCRIPT="${1:-}"
+if [ -z "$HOOK_SCRIPT" ]; then
+  echo "Usage: run_hook.sh <hook_script.py>" >&2
+  exit 2
+fi
 
-# 执行 Hook
-"$VENV_PYTHON" "$HOOK_SCRIPT"
+PY="${CURSOR_AGENT_PYTHON:-${VENV_PYTHON:-}}"
+if [ -z "$PY" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+  else
+    PY="python"
+  fi
+fi
+
+exec "$PY" "$HOOK_SCRIPT"
 

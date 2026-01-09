@@ -42,10 +42,24 @@ Agent Hooks 允许你监控和控制 **Cursor AI Agent** 的行为，在 Agent �
 
 ### 一键安装
 
+#### macOS / Linux
+
 ```bash
 cd /path/to/cursorgirl/cursor-hooks
 ./deploy.sh
 ```
+
+#### Windows（PowerShell）
+
+在 `cursor-hooks/` 目录下运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+
+> 如需无提示覆盖已安装版本：`.\deploy.ps1 -Force`
+>
+> Windows 需要本机已安装 Python 3.7+，并且 `python` 在 PATH 中；或者使用 `.\deploy.ps1 -PythonPath "C:\Path\to\python.exe"` 指定解释器路径。
 
 脚本会自动：
 1. ✅ 复制所有 Agent Hooks 到 `~/.cursor-agent/`
@@ -54,9 +68,9 @@ cd /path/to/cursorgirl/cursor-hooks
 4. ✅ 在 `~/.cursor/` 创建符号链接
 5. ✅ 复制必要的库文件
 
-### 重启 Cursor
+### 重启 Cursor（通常不需要）
 
-**完全退出** Cursor（Cmd+Q），然后重新打开。
+一般情况下 Hook 配置生效不需要重启 Cursor；如果你发现 Hook 没有触发，再尝试完全退出并重新打开 Cursor。
 
 ## 📊 验证安装
 
@@ -78,8 +92,18 @@ ls -la ~/.cursor/hooks.json
 
 ### 2. 查看日志
 
+日志文件默认写入**系统临时目录**下的 `cursor-agent-hooks.log`（也可以用环境变量 `CURSOR_AGENT_HOOKS_LOG` 自定义）。
+
+- macOS / Linux（默认临时目录通常是 `/tmp`）
+
 ```bash
 tail -f /tmp/cursor-agent-hooks.log
+```
+
+- Windows（PowerShell）
+
+```powershell
+Get-Content -Path (Join-Path $env:TEMP "cursor-agent-hooks.log") -Wait
 ```
 
 ### 3. 测试 Hook
@@ -99,7 +123,7 @@ echo '{"command":"ls -la"}' | python3 ~/.cursor-agent/hooks/beforeShellExecution
 4. 观察：
    - Cursor Agent 开始工作
    - Agent Hooks 被触发
-   - `/tmp/cursor-agent-hooks.log` 有新日志
+   - 日志文件有新日志（见上面的日志路径说明）
    - Ortensia 说话和做动作
 
 ## 🔧 配置
