@@ -68,13 +68,12 @@ export default function AssistantPage() {
     const manager = OrtensiaManager
     manager.initialize()
     
-    // 自动开启 WebSocket 外部连接模式（TTS 由服务器提供）
+    // 自动开启 WebSocket 外部连接模式（渲染由终端决定：文本/动作等）
     settingsStore.setState({
       externalLinkageMode: true,
-      // ✅ 不设置 selectVoice，使用 WebSocket 服务器的 ChatTTS
       selectLanguage: 'ja',
     })
-    console.log('✅ External linkage mode enabled (TTS: WebSocket Server - ChatTTS)')
+    console.log('✅ External linkage mode enabled')
     console.log(`✅ VRM 模型将直接使用: ${TARGET_VRM_PATH}（无需二次加载）`)
 
     // 启用外部连接模式
@@ -110,10 +109,9 @@ export default function AssistantPage() {
       content: text,
     })
     
-    // 播放音频（如果有）
+    // audio_file 为旧版字段：中央已去掉 TTS，端侧可自行实现渲染器
     if (audio_file) {
-      // 音频播放逻辑保持不变
-      console.log('🎵 [Assistant] 播放音频:', audio_file)
+      console.log('ℹ️ [Assistant] 收到旧版 audio_file（已废弃）:', audio_file)
     }
     
     // 🔧 修复：检查是否应该停止（同时检查事件类型和关键词）
@@ -172,11 +170,21 @@ export default function AssistantPage() {
       return
     }
     
-    const canTrigger = autoChecker.canTriggerCheck(matchedId)
-    console.log(`🎯 [Auto Check] 是否可以触发: ${canTrigger}`)
+    const guard = autoChecker.canTriggerCheck(matchedId)
+    console.log(`🎯 [Auto Check] 是否可以触发: ${guard.ok} (reason=${guard.reason || 'none'})`)
     
-    if (!canTrigger) {
-      console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 防抖检查未通过`)
+    if (!guard.ok) {
+      if (guard.shouldAutoStop) {
+        console.log(`🛑 [Auto Check] ${matchedId.substring(0, 8)}: 触发频率/次数熔断，自动停止`)
+        conversationStore.setAutoCheckEnabled(matchedId, false)
+        conversationStore.addMessage(matchedId, {
+          role: 'system',
+          content: '🛑 自动检查触发过于频繁，已自动停止以避免无限循环',
+          timestamp: Date.now()
+        })
+      } else {
+        console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 防抖检查未通过`)
+      }
       return
     }
     

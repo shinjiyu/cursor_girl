@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Set, Optional
 import time
+import os
 
 # ⚠️ 必须在任何 logging 调用之前配置！
 # 配置日志 - DEBUG 级别用于调试
@@ -39,13 +40,71 @@ from protocol import (
     Platform
 )
 
-# 导入 TTS 管理器
-try:
-    from tts_manager import TTSManager
-    TTS_AVAILABLE = True
-except ImportError:
-    TTS_AVAILABLE = False
-    logger.warning("⚠️  TTS Manager 不可用，TTS 功能将被禁用")
+# ============================================================================
+# VNext: Session 事件流（多终端一致性 + 输入仲裁）
+# ============================================================================
+
+class _RecentIdSet:
+    """简单的去重集合（保留最近 N 个）"""
+
+    def __init__(self, max_size: int = 512):
+        self.max_size = max_size
+        self._items = []  # 保留插入顺序
+        self._set = set()
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._set
+
+    def add(self, item: str):
+        if item in self._set:
+            return
+        self._set.add(item)
+        self._items.append(item)
+        # 裁剪
+        if len(self._items) > self.max_size:
+            drop = self._items[: len(self._items) - self.max_size]
+            self._items = self._items[-self.max_size :]
+            for d in drop:
+                self._set.discard(d)
+
+
+class SessionState:
+    """单个 session 的有序事件流状态"""
+
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.seq = 0
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.dedupe = _RecentIdSet(max_size=1024)
+        self.event_id_to_seq: Dict[str, int] = {}  # client_event_id -> seq（用于幂等回执）
+        self.worker_task: Optional[asyncio.Task] = None
+        self.members: Set[str] = set()  # client_id 集合（用于广播 session_event）
+
+    def next_seq(self) -> int:
+        self.seq += 1
+        return self.seq
+
+
+class SessionManager:
+    """管理所有 session 的队列、序号、成员与 worker"""
+
+    def __init__(self):
+        self.sessions: Dict[str, SessionState] = {}
+
+    def get_or_create(self, session_id: str) -> SessionState:
+        if session_id not in self.sessions:
+            self.sessions[session_id] = SessionState(session_id=session_id)
+        return self.sessions[session_id]
+
+    def join(self, session_id: str, client_id: str):
+        self.get_or_create(session_id).members.add(client_id)
+
+    def leave_all(self, client_id: str):
+        for s in self.sessions.values():
+            s.members.discard(client_id)
+
+
+session_manager = SessionManager()
 
 
 # ============================================================================
@@ -154,6 +213,12 @@ class ClientRegistry:
             if client_id in self.clients:
                 client_info = self.clients[client_id]
                 roles_str = ", ".join(sorted(client_info.client_types)) if client_info.client_types else "none"
+
+                # VNext: 从 session 成员移除
+                try:
+                    session_manager.leave_all(client_id)
+                except Exception:
+                    pass
                 
                 # 如果是 cursor_hook 或 agent_hook，清理 workspace 映射
                 if client_info.has_role('cursor_hook') or client_info.has_role('agent_hook'):
@@ -213,18 +278,6 @@ class ClientRegistry:
 
 # 全局客户端注册表
 registry = ClientRegistry()
-
-# TTS 管理器（兼容旧协议）
-tts_manager = None
-if TTS_AVAILABLE:
-    try:
-        tts_manager = TTSManager()
-        tts_manager.initialize()
-        logger.info(f"✅ TTS 初始化成功: {tts_manager.get_info()['name']}")
-    except Exception as e:
-        logger.error(f"❌ TTS 初始化失败: {e}")
-        tts_manager = None
-
 
 # ============================================================================
 # 消息处理
@@ -293,10 +346,24 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         
         # Cursor 输入操作
         elif msg_type == MessageType.CURSOR_INPUT_TEXT:
-            await handle_cursor_input_text(client_info, message)
+            # VNext: 不直接执行，统一进入 session 队列串行化，避免多端并发交错
+            await handle_cursor_input_text_enqueued(client_info, message)
         
         elif msg_type == MessageType.CURSOR_INPUT_TEXT_RESULT:
             await route_message(message)  # 结果转发回发送者
+
+        # VNext: 输入仲裁（文本事件）
+        elif msg_type == MessageType.INPUT_SUBMIT:
+            await handle_input_submit(client_info, message)
+        elif msg_type == MessageType.INPUT_ACK:
+            await route_message(message)
+
+        # VNext: 通用扩展事件入口（不触达 inject）
+        elif msg_type == MessageType.CLIENT_EVENT_SUBMIT:
+            await handle_client_event_submit(client_info, message)
+        elif msg_type == MessageType.SESSION_EVENT:
+            # SESSION_EVENT 只应由 server 产生，这里默认转发（或丢弃）以兼容测试工具
+            await route_message(message)
         
         # 🆕 Conversation ID 查询（V10）
         elif msg_type == MessageType.GET_CONVERSATION_ID:
@@ -307,7 +374,9 @@ async def handle_new_protocol_message(client_info: ClientInfo, message: Message)
         
         # 通用 JavaScript 执行
         elif msg_type == MessageType.EXECUTE_JS:
-            await route_message(message)  # 转发给 inject
+            # 🔒 白名单：禁止外部客户端直接请求 execute_js（防止绕过仲裁）
+            logger.warning(f"⛔ 拒绝外部 EXECUTE_JS 请求: from={message.from_}")
+            return
         
         elif msg_type == MessageType.EXECUTE_JS_RESULT:
             # 检查是否是 discovery 请求的结果
@@ -375,6 +444,11 @@ async def handle_register(client_info: ClientInfo, message: Message):
     
     roles_str = ", ".join(sorted(client_info.client_types))
     logger.info(f"✅ [{client_id}] 注册成功，角色: [{roles_str}]")
+
+    # VNext: 如果注册 payload 带默认 session_id，则加入 session 成员（用于 session_event 广播）
+    default_session_id = payload.get('session_id')
+    if default_session_id:
+        session_manager.join(default_session_id, client_id)
     
     # 发送确认
     ack_msg = MessageBuilder.register_ack(
@@ -409,6 +483,9 @@ async def handle_disconnect(client_info: ClientInfo, message: Message):
     reason = payload.get('reason', 'unknown')
     
     logger.info(f"👋 [{client_info.client_id}] 主动断开: {reason}")
+
+    # VNext: 断开时从所有 session 移除
+    session_manager.leave_all(client_info.client_id)
 
 
 async def find_inject_for_hook(message: Message) -> Optional[ClientInfo]:
@@ -470,14 +547,12 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     V11: 移除映射管理，改用动态查询
     
     功能：
-    1. 生成 TTS 音频（如果 TTS 可用）
-    2. 将消息（含音频）转发给所有 AITuber 客户端
+    1. 将消息（纯文本事件）转发给所有 AITuber 客户端
     
     工作流程:
     1. 提取文本和情绪
-    2. 使用 TTS 生成音频文件
-    3. 将音频文件路径添加到消息中
-    4. 转发给所有 AITuber 客户端
+    2. 将 conversation_id 添加到 payload 中
+    3. 转发给所有 AITuber 客户端
     """
     hook_id = message.from_
     payload = message.payload
@@ -495,29 +570,6 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     if not aituber_clients:
         logger.warning(f"⚠️  目标客户端不存在: aituber")
         return
-    
-    # 4. 生成 TTS 音频（如果 TTS 可用）
-    text = payload.get('text', '')
-    emotion = payload.get('emotion', 'neutral')
-    
-    if text and tts_manager:
-        try:
-            logger.info(f"🎤 生成 TTS: {text[:30]}... (emotion: {emotion})")
-            
-            # 生成音频文件（在线程池中执行，避免阻塞）
-            audio_file = await asyncio.to_thread(
-                tts_manager.generate_with_emotion,
-                text,
-                emotion
-            )
-            
-            # 将音频文件路径添加到消息的 payload 中
-            message.payload['audio_file'] = audio_file
-            logger.info(f"✅ TTS 生成成功: {audio_file}")
-            
-        except Exception as e:
-            logger.error(f"❌ TTS 生成失败: {e}")
-            # TTS 失败不影响消息转发，继续执行
     
     # ✨ 将 conversation_id 添加到 payload 中
     message.payload['conversation_id'] = conversation_id
@@ -998,6 +1050,217 @@ async def handle_cursor_input_text(client_info: ClientInfo, message: Message):
         await client_info.websocket.send(error_msg.to_json())
 
 
+def _resolve_session_id(from_client: ClientInfo, payload: dict) -> str:
+    """
+    解析 session_id：
+    - 优先 payload.session_id
+    - 否则使用 conversation_id（与 Cursor 会话天然绑定）
+    - 否则退化到注册时的 session_id
+    - 最后使用 default
+    """
+    sid = payload.get('session_id') or payload.get('conversation_id')
+    if sid:
+        return sid
+    meta_sid = (from_client.metadata or {}).get('session_id')
+    return meta_sid or 'default'
+
+
+async def _broadcast_session_event(session_id: str, seq: int, event_name: str, event_payload: dict, source_client_id: Optional[str] = None):
+    """向 session 成员广播权威事件流"""
+    s = session_manager.get_or_create(session_id)
+    msg = MessageBuilder.session_event(
+        from_id="server",
+        to_id="",  # 广播由本函数手动实现
+        session_id=session_id,
+        seq=seq,
+        event_name=event_name,
+        event_payload=event_payload,
+        source_client_id=source_client_id
+    )
+    msg_json = msg.to_json()
+
+    # 仅发给 session 成员
+    targets = [registry.get_by_id(cid) for cid in s.members]
+    targets = [t for t in targets if t is not None]
+    if not targets:
+        return
+    await asyncio.gather(*[t.websocket.send(msg_json) for t in targets], return_exceptions=True)
+
+
+async def handle_input_submit(client_info: ClientInfo, message: Message):
+    """处理 INPUT_SUBMIT：接收文本输入事件，服务端排序入队并广播 session_event"""
+    payload = message.payload or {}
+    client_event_id = payload.get('client_event_id') or f"evt_{message.from_}_{int(time.time()*1000)}"
+    session_id = _resolve_session_id(client_info, payload)
+
+    # 加入 session
+    session_manager.join(session_id, client_info.client_id)
+    s = session_manager.get_or_create(session_id)
+
+    # 幂等去重
+    if client_event_id in s.dedupe:
+        seq = s.event_id_to_seq.get(client_event_id, s.seq)
+        ack = MessageBuilder.input_ack(
+            from_id="server",
+            to_id=client_info.client_id,
+            client_event_id=client_event_id,
+            session_id=session_id,
+            seq=seq,
+            duplicate=True
+        )
+        await client_info.websocket.send(ack.to_json())
+        return
+
+    # 分配 seq（权威顺序）
+    seq = s.next_seq()
+    s.dedupe.add(client_event_id)
+    s.event_id_to_seq[client_event_id] = seq
+
+    # 先 ack（尽快反馈已接收）
+    ack = MessageBuilder.input_ack(
+        from_id="server",
+        to_id=client_info.client_id,
+        client_event_id=client_event_id,
+        session_id=session_id,
+        seq=seq,
+        duplicate=False
+    )
+    await client_info.websocket.send(ack.to_json())
+
+    # 广播“输入已进入会话事件流”
+    await _broadcast_session_event(
+        session_id=session_id,
+        seq=seq,
+        event_name="input_submitted",
+        event_payload={
+            "text": payload.get('text', ''),
+            "conversation_id": payload.get('conversation_id'),
+            "execute": payload.get('execute', False),
+            "client_event_id": client_event_id
+        },
+        source_client_id=client_info.client_id
+    )
+
+    # 入队：后续串行驱动下游（Cursor inject）
+    await s.queue.put({
+        "kind": "cursor_input_text",
+        "seq": seq,
+        "from_client_id": client_info.client_id,
+        "payload": payload
+    })
+
+    # 确保 worker 启动
+    if not s.worker_task or s.worker_task.done():
+        s.worker_task = asyncio.create_task(_session_worker(s))
+
+
+async def handle_client_event_submit(client_info: ClientInfo, message: Message):
+    """处理 CLIENT_EVENT_SUBMIT：通用扩展事件入口（只入会话事件流并广播，不触达 inject）"""
+    payload = message.payload or {}
+    session_id = payload.get('session_id') or 'default'
+    client_event_id = payload.get('client_event_id') or f"evt_{message.from_}_{int(time.time()*1000)}"
+    event_name = payload.get('event_name') or 'unknown'
+    event_payload = payload.get('event_payload') or {}
+
+    session_manager.join(session_id, client_info.client_id)
+    s = session_manager.get_or_create(session_id)
+
+    if client_event_id in s.dedupe:
+        return
+
+    seq = s.next_seq()
+    s.dedupe.add(client_event_id)
+
+    await _broadcast_session_event(
+        session_id=session_id,
+        seq=seq,
+        event_name=event_name,
+        event_payload=event_payload,
+        source_client_id=client_info.client_id
+    )
+
+
+async def handle_cursor_input_text_enqueued(client_info: ClientInfo, message: Message):
+    """
+    兼容旧的 CURSOR_INPUT_TEXT：
+    - 不直接执行
+    - 转成 INPUT_SUBMIT 的语义进入队列
+    """
+    payload = message.payload or {}
+    # 使用固定幂等键（同一条消息重发不会重复入队）
+    client_event_id = payload.get('client_event_id') or f"cit_{message.from_}_{payload.get('conversation_id')}_{payload.get('text','')}_{message.timestamp}"
+    submit_msg = Message(
+        type=MessageType.INPUT_SUBMIT,
+        from_=message.from_,
+        to="server",
+        timestamp=message.timestamp,
+        payload={
+            "client_event_id": client_event_id,
+            "text": payload.get('text', ''),
+            "conversation_id": payload.get('conversation_id'),
+            "execute": payload.get('execute', False),
+            "session_id": payload.get('session_id'),
+            "meta": {"via": "cursor_input_text"}
+        }
+    )
+    await handle_input_submit(client_info, submit_msg)
+
+
+async def _session_worker(s: SessionState):
+    """串行消费 session 队列，驱动下游（inject 白名单指令）"""
+    logger.info(f"🧵 [SessionWorker] started: session={s.session_id}")
+    while True:
+        item = await s.queue.get()
+        try:
+            kind = item.get("kind")
+            seq = item.get("seq")
+            payload = item.get("payload") or {}
+            from_client_id = item.get("from_client_id")
+
+            if kind == "cursor_input_text":
+                # 复用现有逻辑：构造一个临时 ClientInfo 以便复用响应路径
+                sender = registry.get_by_id(from_client_id)
+                if not sender:
+                    continue
+
+                # 广播：开始下游派发
+                await _broadcast_session_event(
+                    session_id=s.session_id,
+                    seq=seq,
+                    event_name="cursor_input_dispatching",
+                    event_payload={
+                        "conversation_id": payload.get("conversation_id"),
+                        "execute": payload.get("execute", False)
+                    },
+                    source_client_id=from_client_id
+                )
+
+                # 直接调用原来的执行函数（它会给 sender 回 cursor_input_text_result）
+                msg = Message(
+                    type=MessageType.CURSOR_INPUT_TEXT,
+                    from_=from_client_id,
+                    to="server",
+                    timestamp=int(time.time()),
+                    payload={
+                        "text": payload.get("text", ""),
+                        "conversation_id": payload.get("conversation_id"),
+                        "execute": payload.get("execute", False)
+                    }
+                )
+                await handle_cursor_input_text(sender, msg)
+
+                await _broadcast_session_event(
+                    session_id=s.session_id,
+                    seq=seq,
+                    event_name="cursor_input_dispatched",
+                    event_payload={},
+                    source_client_id=from_client_id
+                )
+        finally:
+            s.queue.task_done()
+
+
+
 async def route_message(message: Message):
     """路由消息到指定客户端"""
     target_id = message.to
@@ -1078,28 +1341,6 @@ async def broadcast_event(message: Message):
 async def handle_legacy_message(websocket, data: dict):
     """处理旧协议消息（AITuber Kit 兼容）"""
     logger.info(f"📨 [旧协议] 收到消息: {data.get('type', 'unknown')}")
-    
-    # 如果消息包含文本，生成 TTS
-    text = data.get('text') or data.get('message')
-    if text and tts_manager:
-        try:
-            emotion = data.get('emotion', 'neutral')
-            
-            logger.info(f"🎤 生成 TTS: {text} (emotion: {emotion})")
-            
-            # 生成音频文件
-            audio_file = await asyncio.to_thread(
-                tts_manager.generate_with_emotion,
-                text,
-                emotion
-            )
-            
-            # 将音频文件路径添加到消息中
-            data['audio_file'] = audio_file
-            logger.info(f"✅ TTS 生成成功: {audio_file}")
-            
-        except Exception as e:
-            logger.error(f"❌ TTS 生成失败: {e}")
     
     # 广播给所有 AITuber 客户端（旧协议）
     aituber_clients = [c for c in registry.clients.values() 
@@ -1234,12 +1475,15 @@ async def heartbeat_monitor():
 
 async def main():
     """主函数"""
+    host = os.environ.get("ORTENSIA_HOST", "0.0.0.0")
+    port = int(os.environ.get("ORTENSIA_PORT", "8765"))
+
     logger.info("=" * 70)
     logger.info("  🌸 Ortensia 中央 WebSocket Server v2.0")
     logger.info("=" * 70)
     logger.info("")
     logger.info("服务器配置:")
-    logger.info("  - 地址: ws://localhost:8765")
+    logger.info(f"  - 地址: ws://{host}:{port}")
     logger.info("  - 协议: Ortensia Protocol v1 + 旧协议兼容")
     logger.info("  - 支持客户端:")
     logger.info("    • Cursor Hook")
@@ -1253,8 +1497,8 @@ async def main():
     heartbeat_task = asyncio.create_task(heartbeat_monitor())
     
     # 启动 WebSocket 服务器
-    async with websockets.serve(handle_client, "localhost", 8765):
-        logger.info("✅ WebSocket 服务器已启动: ws://localhost:8765")
+    async with websockets.serve(handle_client, host, port):
+        logger.info(f"✅ WebSocket 服务器已启动: ws://{host}:{port}")
         logger.info("")
         logger.info("等待客户端连接...")
         logger.info("按 Ctrl+C 停止服务器")

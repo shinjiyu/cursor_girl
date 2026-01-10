@@ -1,26 +1,50 @@
 export class AutoTaskChecker {
-  private checkPrompt: string = '请检查是否还有计划中的任务可以完成，如果有请执行，如果没有，请回复"已结束"'
-  private stopKeyword: string = '已结束'
+  private checkPrompt: string = '请检查是否还有计划中的任务可以完成，如果有请执行，如果没有，请回复"已结束"或"已完成"'
+  // 停止关键词：兼容不同 hook/模型返回文本
+  private stopKeywords: string[] = ['已结束', '已完成', '任务完成', '完成任务', '全部完成', '没有任务']
   private lastCheckTimes: Map<string, number> = new Map()
   private minCheckInterval: number = 5000  // 最小检查间隔5秒
   
   // 🆕 允许触发停止检查的事件类型（只有 Agent 完成类事件才检查停止关键词）
   private stopEventTypes: string[] = ['stop', 'afterAgentResponse']
+
+  // ✅ 防刷：自动检查频率/次数熔断（避免无限循环扣费）
+  private checkWindowMs: number = 10 * 60_000
+  private maxChecksPerWindow: number = 4
+  private recentCheckTimes: Map<string, number[]> = new Map()
   
-  canTriggerCheck(conversationId: string): boolean {
+  canTriggerCheck(conversationId: string): { ok: boolean; shouldAutoStop: boolean; reason?: string } {
     const lastTime = this.lastCheckTimes.get(conversationId) || 0
     const now = Date.now()
-    
+
+    // 1) 最小间隔限制
     if (now - lastTime < this.minCheckInterval) {
       console.log(`[Auto Check] 跳过检查，距上次不足 ${this.minCheckInterval}ms`)
-      return false
+      return { ok: false, shouldAutoStop: false, reason: 'min_interval' }
     }
-    
-    return true
+
+    // 2) 窗口频率限制
+    const times = this.recentCheckTimes.get(conversationId) || []
+    const windowStart = now - this.checkWindowMs
+    const recent = times.filter((t) => t >= windowStart)
+    if (recent.length >= this.maxChecksPerWindow) {
+      console.log(`[Auto Check] 触发熔断：${this.checkWindowMs}ms 内已检查 ${recent.length} 次`)
+      return { ok: false, shouldAutoStop: true, reason: 'rate_limit' }
+    }
+
+    // 回写裁剪后的数组（避免无限增长）
+    this.recentCheckTimes.set(conversationId, recent)
+    return { ok: true, shouldAutoStop: false }
   }
   
   recordCheck(conversationId: string) {
-    this.lastCheckTimes.set(conversationId, Date.now())
+    const now = Date.now()
+    this.lastCheckTimes.set(conversationId, now)
+    const times = this.recentCheckTimes.get(conversationId) || []
+    times.push(now)
+    // 裁剪窗口内数据
+    const windowStart = now - this.checkWindowMs
+    this.recentCheckTimes.set(conversationId, times.filter((t) => t >= windowStart))
   }
   
   getCheckPrompt(): string {
@@ -31,7 +55,7 @@ export class AutoTaskChecker {
    * 🔧 修复：检查是否应该停止自动任务检查
    * 必须同时满足：
    * 1. 事件类型是 stop 或 afterAgentResponse（Agent 完成类事件）
-   * 2. 文本包含"已结束"关键词
+   * 2. 文本包含停止关键词（如“已结束/任务完成”等）
    */
   shouldStop(responseText: string, eventType?: string): boolean {
     // 如果没有事件类型，不停止（可能是用户输入）
@@ -48,8 +72,9 @@ export class AutoTaskChecker {
     }
     
     // 检查文本是否包含停止关键词
-    const hasStopKeyword = responseText.includes(this.stopKeyword)
-    console.log(`[Auto Check] shouldStop: eventType="${eventType}", hasKeyword=${hasStopKeyword}`)
+    const hitKeyword = this.stopKeywords.find((kw) => responseText.includes(kw))
+    const hasStopKeyword = Boolean(hitKeyword)
+    console.log(`[Auto Check] shouldStop: eventType="${eventType}", hitKeyword=${hitKeyword || 'none'}`)
     
     return hasStopKeyword
   }

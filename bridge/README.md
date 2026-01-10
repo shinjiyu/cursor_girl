@@ -11,6 +11,21 @@ pip install -r requirements.txt
 
 ## 🚀 快速开始
 
+### Docker 部署中央服务器（推荐用于远程机器）
+
+在仓库根目录执行：
+
+```bash
+docker compose -f docker-compose.central.yml up -d --build
+```
+
+默认会在容器内监听 `0.0.0.0:8765`，并映射到宿主机 `8765`。
+
+环境变量：
+- `ORTENSIA_HOST`：监听地址（容器内通常用 `0.0.0.0`）
+- `ORTENSIA_PORT`：监听端口（默认 `8765`）
+
+远程部署后，客户端侧需要把中央地址改成你的远程地址（例如 `ws://your-domain:8765`）。\n
 ### 1. 启动 AITuber Kit（另一个终端）
 
 ```bash

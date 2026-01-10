@@ -70,7 +70,7 @@
 | 组件 | 位置 | 职责 |
 |-----|------|------|
 | **install-v10.sh** | 安装脚本 | 注入代码到 Cursor main.js |
-| **中央 Server** | bridge/websocket_server.py | 消息路由、TTS 处理 |
+| **中央 Server** | bridge/websocket_server.py | 消息路由、会话仲裁（多端输入队列）、事件广播 |
 | **协议定义** | bridge/protocol.py | 消息类型和格式 |
 | **Inject 代码** | 嵌入 main.js | WebSocket 通信 + JS 执行 |
 

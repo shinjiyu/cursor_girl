@@ -24,7 +24,7 @@
 ### 关键特性
 
 - ✅ **多角色注册**: AITuber 可同时注册为 `aituber_client` 和 `command_client`
-- ✅ **TTS 集成**: 中央服务器生成 TTS 音频并传递给 AITuber
+- ✅ **会话事件流**: 中央服务器负责输入仲裁与事件广播（多端一致性）
 - ✅ **事件驱动**: Cursor Hook 事件自动转发给 AITuber
 - ✅ **命令控制**: AITuber 可向 Cursor 发送命令（输入文本、执行等）
 
@@ -37,7 +37,7 @@
 │                  中央服务器 (ws://localhost:8765)                 │
 │                                                                   │
 │  - 消息路由 (Message Routing)                                    │
-│  - TTS 音频生成 (Text-to-Speech)                                 │
+│  - 会话仲裁与顺序一致性 (Session Ordering)                        │
 │  - 事件广播 (Event Broadcasting)                                 │
 │  - JavaScript 动态执行 (Dynamic JS Execution)                    │
 └────┬──────────────────┬──────────────────┬────────────────────┘
@@ -56,8 +56,8 @@
 
 **通信流程**:
 1. Cursor Hook (Python) 监听 Cursor 事件 → 发送到中央服务器
-2. 中央服务器生成 TTS 音频 → 转发给 AITuber
-3. AITuber 显示消息并播放语音
+2. 中央服务器转发为会话事件 → 广播给 AITuber
+3. AITuber 显示消息（渲染由终端决定）
 4. AITuber 发送命令 → 中央服务器 → Cursor Inject → 执行
 
 ---
@@ -78,7 +78,7 @@
 
 | 消息类型 | 方向 | 说明 | 实现状态 |
 |---------|------|------|----------|
-| `AITUBER_RECEIVE_TEXT` | Hook → Server → AITuber | Cursor 事件文本 + TTS | ✅ 已实现 |
+| `AITUBER_RECEIVE_TEXT` | Hook → Server → AITuber | Cursor 事件文本（不含 TTS） | ✅ 已实现 |
 | `AITUBER_SPEAK` | AITuber → Server | AITuber 说话（预留） | ⚠️ 定义但未使用 |
 | `AITUBER_EMOTION` | AITuber → Server | 情绪变化（预留） | ⚠️ 定义但未使用 |
 | `AITUBER_STATUS` | AITuber → Server | 状态更新（预留） | ⚠️ 定义但未使用 |
@@ -169,11 +169,9 @@
    ↓
 2. Hook 发送 aituber_receive_text → 中央服务器
    ↓
-3. 中央服务器生成 TTS 音频文件
+3. 中央服务器添加 conversation_id 等上下文
    ↓
-4. 中央服务器添加 audio_file 路径到 payload
-   ↓
-5. 转发给所有 aituber_client
+4. 转发给所有 aituber_client
 ```
 
 #### 4.2.2 AITUBER_RECEIVE_TEXT (Hook → Server → AITuber)
@@ -197,7 +195,7 @@
 }
 ```
 
-**转发给 AITuber（添加了 audio_file）**:
+**转发给 AITuber（纯文本事件，不再添加 audio_file）**:
 
 ```json
 {
@@ -211,8 +209,7 @@
     "context": {
       "event_type": "shell_execution",
       "exit_code": 0
-    },
-    "audio_file": "/path/to/bridge/tts_output/aituber_1733320900.wav"
+    }
   }
 }
 ```
@@ -224,7 +221,7 @@
 | `text` | string | 要显示和朗读的文本 |
 | `emotion` | string | 情绪: `happy`, `sad`, `neutral`, `excited`, `worried` |
 | `context` | object | 事件上下文信息（可选） |
-| `audio_file` | string | TTS 音频文件路径（服务器添加） |
+| `audio_file` | string | （已废弃）旧版 TTS 音频文件路径 |
 
 **AITuber 客户端处理**:
 
@@ -238,11 +235,7 @@ case MessageType.AITUBER_RECEIVE_TEXT:
     content: text,
   })
   
-  // 2. 播放 TTS 音频
-  if (audio_file) {
-    const audioUrl = `http://localhost:3000/api/tts-audio/${audio_file.split('/').pop()}`
-    await playAudio(audioUrl)
-  }
+  // 2. 渲染由终端决定（可选：端侧 TTS/动作渲染器）
   break
 ```
 
@@ -390,20 +383,17 @@ Hook → Server: AITUBER_RECEIVE_TEXT
 
 Server 处理:
   1. 检测到 aituber_receive_text 消息
-  2. 调用 TTS 生成音频: /bridge/tts_output/aituber_1733320900.wav
-  3. 添加 audio_file 到 payload
+  2. 添加 conversation_id 等上下文
 
 Server → AITuber: AITUBER_RECEIVE_TEXT
   payload: { 
     text: "命令执行完成", 
-    emotion: "happy",
-    audio_file: "/path/to/tts_output/aituber_1733320900.wav"
+    emotion: "happy"
   }
 
 AITuber 处理:
   1. 显示消息到聊天窗口
-  2. 请求音频: GET /api/tts-audio/aituber_1733320900.wav
-  3. 播放语音
+  2. （可选）端侧渲染器处理（例如 TTS/动作）
 
 
 步骤 3: AITuber 发送命令到 Cursor
@@ -451,7 +441,7 @@ Server → AITuber: HEARTBEAT_ACK
 |------|---------|----------|
 | **注册协议** | `bridge/protocol.py` | ✅ 完整实现 |
 | **多角色注册** | `aituber-kit/src/utils/OrtensiaClient.ts` | ✅ 完整实现 |
-| **AITUBER_RECEIVE_TEXT** | `bridge/websocket_server.py:472` | ✅ 完整实现 + TTS |
+| **AITUBER_RECEIVE_TEXT** | `bridge/websocket_server.py` | ✅ 完整实现（不含 TTS） |
 | **CURSOR_INPUT_TEXT** | `bridge/websocket_server.py:553` | ✅ 完整实现 |
 | **EXECUTE_JS (动态)** | `cursor-injector/install-v10.sh` | ✅ 完整实现 |
 | **心跳机制** | `OrtensiaClient.ts` + `websocket_server.py` | ✅ 完整实现 |
@@ -473,16 +463,15 @@ Server → AITuber: HEARTBEAT_ACK
 ├── bridge/
 │   ├── protocol.py              ✅ 协议定义（Python）
 │   ├── websocket_server.py      ✅ 中央服务器实现
-│   ├── tts_manager.py          ✅ TTS 音频生成
-│   └── tts_output/             ✅ TTS 输出目录
+│   ├── tts_manager.py          ⚠️ 已暂时移除中央依赖（端侧渲染器可选）
+│   └── tts_output/             ⚠️ 旧版遗留目录（可清理）
 ├── aituber-kit/
 │   ├── src/
 │   │   ├── utils/
 │   │   │   └── OrtensiaClient.ts  ✅ WebSocket 客户端
 │   │   ├── pages/
 │   │   │   └── assistant.tsx      ✅ 聊天 UI + 消息处理
-│   │   └── api/
-│   │       └── tts-audio/[filename].ts  ✅ TTS 音频服务
+│   │   └── api/                 ⚠️ 端侧渲染器相关（可选）
 ├── cursor-injector/
 │   └── install-v10.sh           ✅ Inject 代码（含 EXECUTE_JS）
 └── cursor-hooks/
@@ -531,7 +520,7 @@ Server → AITuber: HEARTBEAT_ACK
 
 **用途**: 通知其他组件 AITuber 当前情绪状态。
 
-#### 7.1.3 多语言 TTS 支持
+#### 7.1.3 （可选）端侧 TTS 支持
 
 在 `aituber_receive_text` 中添加语言字段：
 
@@ -547,8 +536,8 @@ Server → AITuber: HEARTBEAT_ACK
 
 ### 7.2 性能优化建议
 
-1. **TTS 缓存**: 对相同文本缓存音频文件，避免重复生成
-2. **音频流式传输**: 使用 WebSocket 直接传输音频数据，而非文件路径
+1. **事件流去重**: 基于 `client_event_id` 做幂等，避免重连重发导致重复
+2. **队列串行化**: 对会影响下游（inject）的指令按 session 串行执行，避免交错
 3. **消息压缩**: 对大型 payload 使用压缩
 4. **连接池**: 复用 WebSocket 连接
 
