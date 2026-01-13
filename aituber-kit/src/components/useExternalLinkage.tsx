@@ -5,6 +5,7 @@ import homeStore from '@/features/stores/home'
 import settingsStore from '@/features/stores/settings'
 import { EmotionType } from '@/features/messages/messages'
 import { OrtensiaClient, MessageType, OrtensiaMessage } from '@/utils/OrtensiaClient'
+import { resolveOrtensiaServerUrl } from '@/utils/resolveOrtensiaServerUrl'
 
 ///取得したコメントをストックするリストの作成（receivedMessages）
 interface TmpMessage {
@@ -100,23 +101,30 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     }
     
     client.on(MessageType.AITUBER_RECEIVE_TEXT, handler)
-
-    const ortensiaServer =
-      process.env.NEXT_PUBLIC_ORTENSIA_SERVER ||
-      'wss://mazda-commissioners-organised-perceived.trycloudflare.com/'
+    let disposed = false
+    let ortensiaServer = ''
 
     // 连接到中央服务器（如果还没连接）
-    if (!client.isConnected()) {
-      client.connect(ortensiaServer)
-      .then(() => {
-        console.log('✅ [Ortensia] 连接成功')
-        homeStore.setState({ chatProcessing: false })
-        // 🆕 discoverExistingConversations 现在在 register_ack 后自动调用（OrtensiaClient 内部处理）
-      })
-      .catch((error) => {
-        console.error('❌ [Ortensia] 连接失败:', error)
-      })
+    const connectIfNeeded = async () => {
+      ortensiaServer = await resolveOrtensiaServerUrl()
+      if (disposed) return
+
+      if (!client.isConnected()) {
+        console.log('🌐 [Ortensia] 使用服务器地址:', ortensiaServer)
+        client
+          .connect(ortensiaServer)
+          .then(() => {
+            console.log('✅ [Ortensia] 连接成功')
+            homeStore.setState({ chatProcessing: false })
+            // 🆕 discoverExistingConversations 现在在 register_ack 后自动调用（OrtensiaClient 内部处理）
+          })
+          .catch((error) => {
+            console.error('❌ [Ortensia] 连接失败:', error)
+          })
+      }
     }
+
+    void connectIfNeeded()
 
     // 重连逻辑
     const reconnectInterval = setInterval(() => {
@@ -124,21 +132,30 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
       if (ss.externalLinkageMode && client && !client.isConnected()) {
         console.log('🔄 [Ortensia] 尝试重连...')
         homeStore.setState({ chatProcessing: false })
-        
-        client.connect(ortensiaServer)
-          .then(() => {
-            console.log('✅ [Ortensia] 重连成功')
-            // 🆕 重连后也要重新发现对话
-            setTimeout(() => {
-              client.discoverExistingConversations()
-            }, 1000)
-          })
-          .catch((error) => console.error('❌ [Ortensia] 重连失败:', error))
+
+        // 如果首次还没解析出地址，重试时再解析一次
+        const urlPromise = ortensiaServer ? Promise.resolve(ortensiaServer) : resolveOrtensiaServerUrl()
+        void urlPromise.then((url) => {
+          ortensiaServer = url
+          if (disposed) return
+
+          client
+            .connect(ortensiaServer)
+            .then(() => {
+              console.log('✅ [Ortensia] 重连成功')
+              // 🆕 重连后也要重新发现对话
+              setTimeout(() => {
+                client.discoverExistingConversations()
+              }, 1000)
+            })
+            .catch((error) => console.error('❌ [Ortensia] 重连失败:', error))
+        })
       }
     }, 5000)
 
     return () => {
       console.log('🔌 [useExternalLinkage] Cleanup: 移除消息处理器')
+      disposed = true
       clearInterval(reconnectInterval)
       if (client) {
         client.off(MessageType.AITUBER_RECEIVE_TEXT)

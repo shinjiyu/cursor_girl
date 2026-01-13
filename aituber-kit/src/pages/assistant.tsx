@@ -4,6 +4,7 @@ import homeStore from '@/features/stores/home'
 import settingsStore from '@/features/stores/settings'
 import { OrtensiaClient, MessageType, type OrtensiaMessage } from '@/utils/OrtensiaClient'
 import OrtensiaManager from '@/utils/OrtensiaManager'
+import { resolveOrtensiaServerUrl } from '@/utils/resolveOrtensiaServerUrl'
 import { useConversationStore } from '@/features/stores/conversationStore'
 import { AutoTaskChecker } from '@/utils/AutoTaskChecker'
 import { MultiConversationChat } from '@/components/MultiConversationChat'
@@ -88,18 +89,18 @@ export default function AssistantPage() {
     const checkAndConnect = () => {
       const client = manager.getClient()
       if (client) {
-        const ortensiaServer = process.env.NEXT_PUBLIC_ORTENSIA_SERVER || 
-          'wss://mazda-commissioners-organised-perceived.trycloudflare.com/'
-        
         if (!client.isConnected()) {
-          console.log('🔌 [Assistant] 检测到未连接，尝试连接中央服务器:', ortensiaServer)
-          client.connect(ortensiaServer)
-            .then(() => {
-              console.log('✅ [Assistant] 中央服务器连接成功')
-            })
-            .catch((error) => {
-              console.error('❌ [Assistant] 中央服务器连接失败:', error)
-            })
+          void resolveOrtensiaServerUrl().then((ortensiaServer) => {
+            console.log('🔌 [Assistant] 检测到未连接，尝试连接中央服务器:', ortensiaServer)
+            client
+              .connect(ortensiaServer)
+              .then(() => {
+                console.log('✅ [Assistant] 中央服务器连接成功')
+              })
+              .catch((error) => {
+                console.error('❌ [Assistant] 中央服务器连接失败:', error)
+              })
+          })
         } else {
           console.log('✅ [Assistant] 中央服务器已连接')
         }
