@@ -12,9 +12,10 @@ ws://localhost:8765
 
 ### 修改方法
 优先级（从高到低）：
-1. 环境变量 `ORTENSIA_SERVER`
-2. 本地配置文件（推荐给“直接双击启动 Cursor”的场景）
-3. 默认值 `ws://localhost:8765`
+1. 环境变量 `WS_SERVER`
+2. 环境变量 `ORTENSIA_SERVER`
+3. 本地配置文件（推荐给“直接双击启动 Cursor”的场景）
+4. 默认值 `ws://localhost:8765`
 
 ---
 
@@ -37,6 +38,20 @@ ws://localhost:8765
 wss://mazda-commissioners-organised-perceived.trycloudflare.com/
 ```
 
+### 推荐路径（Windows）
+
+把中央服务器地址写入（只写一行 URL）：
+
+```
+%APPDATA%\Ortensia\central_server.txt
+```
+
+备选路径：
+
+```
+%LOCALAPPDATA%\Ortensia\central_server.txt
+```
+
 ### 备选路径（也会自动尝试）
 
 - `~/.ortensia_server`
@@ -47,7 +62,7 @@ wss://mazda-commissioners-organised-perceived.trycloudflare.com/
 
 ## 🌿 环境变量（终端启动时可用）
 
-通过环境变量 `ORTENSIA_SERVER` 配置服务器地址。
+通过环境变量 `WS_SERVER` 或 `ORTENSIA_SERVER` 配置服务器地址（优先 WS_SERVER）。
 
 #### 方法 1：临时设置（仅当前终端会话）
 

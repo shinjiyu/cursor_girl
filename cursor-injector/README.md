@@ -31,7 +31,11 @@
 cursor-injector/
 ├── install-v9.sh              # V9 安装脚本（支持中央服务器）⭐
 ├── install.sh                 # 安装脚本（直接注入到 Cursor main.js）
+├── install-win.ps1            # Windows 安装脚本（PowerShell）
+├── install-win.js             # Windows 安装实现（Node）
 ├── uninstall.sh               # 卸载脚本
+├── uninstall-win.ps1          # Windows 卸载脚本（PowerShell）
+├── uninstall-win.js           # Windows 卸载实现（Node）
 ├── ortensia-cursor.sh         # 启动脚本（使用 bridge/venv 环境）
 ├── ortensia_cursor_client.py  # Python 客户端
 ├── CONFIG.md                  # 配置指南（修改服务器地址等）⭐
@@ -85,6 +89,18 @@ cat /tmp/cursor_ortensia.log | grep "服务器地址"
 
 ### 步骤 1: 运行安装脚本
 
+#### Windows（PowerShell）
+
+```powershell
+cd C:\path\to\cursorgirl\cursor-injector
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-win.ps1
+```
+
+> 如果你的 Cursor 不在默认安装路径，可以传参：
+> `.\install-win.ps1 -CursorExe "C:\Path\To\Cursor.exe"`
+
+#### macOS
+
 ```bash
 cd "/Users/user/Documents/ cursorgirl/cursor-injector"
 chmod +x install.sh uninstall.sh
@@ -99,8 +115,16 @@ chmod +x install.sh uninstall.sh
 
 查看日志文件确认 WebSocket 服务器已启动：
 
+macOS / Linux:
+
 ```bash
 cat /tmp/cursor_ortensia.log
+```
+
+Windows（PowerShell，默认写到系统临时目录）:
+
+```powershell
+Get-Content -Path (Join-Path $env:TEMP "cursor_ortensia.log") -Encoding utf8 -Wait
 ```
 
 应该看到类似：

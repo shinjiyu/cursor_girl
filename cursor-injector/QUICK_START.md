@@ -2,9 +2,9 @@
 
 ## 📋 前提条件
 
-- ✅ macOS
 - ✅ Cursor 已安装
-- ✅ Python 3（系统自带即可）
+- ✅ Node.js（Windows 注入脚本需要）
+- ✅ Python 3（仅用于你的客户端工具，不是注入必须）
 
 ---
 
@@ -42,6 +42,15 @@ cat /tmp/cursor_ortensia.log | grep "服务器地址"
 ## 🎯 3 步开始
 
 ### 步骤 1: 安装注入器（30 秒）
+
+#### Windows（PowerShell）
+
+```powershell
+cd C:\path\to\cursorgirl\cursor-injector
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-win.ps1
+```
+
+#### macOS
 
 ```bash
 cd "/Users/user/Documents/ cursorgirl/cursor-injector"
@@ -101,8 +110,16 @@ cd "/Users/user/Documents/ cursorgirl/cursor-injector"
 
 ### 方法 2: 查看日志文件
 
+macOS / Linux:
+
 ```bash
 cat /tmp/cursor_ortensia.log
+```
+
+Windows（PowerShell）:
+
+```powershell
+Get-Content -Path (Join-Path $env:TEMP "cursor_ortensia.log") -Encoding utf8 -Wait
 ```
 
 应该看到：
