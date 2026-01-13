@@ -47,6 +47,7 @@ $HooksDir  = Join-Path $TargetDir "hooks"
 $HooksNodeDir  = Join-Path $TargetDir "hooks-node"
 $LibDir    = Join-Path $TargetDir "lib"
 $LibNodeDir    = Join-Path $TargetDir "lib-node"
+$LibNodeHooksDir = Join-Path $LibNodeDir "hooks"
 $CursorHooksJson = Join-Path $CursorDir "hooks.json"
 $TargetHooksJson = Join-Path $TargetDir "hooks.json"
 
@@ -72,6 +73,7 @@ New-Item -ItemType Directory -Force -Path $HooksDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LibDir | Out-Null
 New-Item -ItemType Directory -Force -Path $HooksNodeDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LibNodeDir | Out-Null
+New-Item -ItemType Directory -Force -Path $LibNodeHooksDir | Out-Null
 New-Item -ItemType Directory -Force -Path $CursorDir | Out-Null
 
 # Copy hooks + libs
@@ -160,15 +162,16 @@ if ($Runtime -eq "python") {
   }
 } elseif ($Runtime -eq "node") {
   $hooks = @{
-    beforeShellExecution = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "beforeShellExecution.js")) })
-    afterShellExecution  = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "afterShellExecution.js")) })
-    beforeMCPExecution   = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "beforeMCPExecution.js")) })
-    afterMCPExecution    = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "afterMCPExecution.js")) })
-    afterFileEdit        = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "afterFileEdit.js")) })
-    beforeReadFile       = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "beforeReadFile.js")) })
-    beforeSubmitPrompt   = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "beforeSubmitPrompt.js")) })
-    afterAgentResponse   = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "afterAgentResponse.js")) })
-    stop                 = @(@{ command = (New-NodeHookCommand (Join-Path $HooksNodeDir "stop.js")) })
+    # Preferred layout: lib-node contains hooks + handler (matches "library contains hooks + installer" organization)
+    beforeShellExecution = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "beforeShellExecution.js")) })
+    afterShellExecution  = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "afterShellExecution.js")) })
+    beforeMCPExecution   = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "beforeMCPExecution.js")) })
+    afterMCPExecution    = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "afterMCPExecution.js")) })
+    afterFileEdit        = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "afterFileEdit.js")) })
+    beforeReadFile       = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "beforeReadFile.js")) })
+    beforeSubmitPrompt   = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "beforeSubmitPrompt.js")) })
+    afterAgentResponse   = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "afterAgentResponse.js")) })
+    stop                 = @(@{ command = (New-NodeHookCommand (Join-Path $LibNodeHooksDir "stop.js")) })
   }
 } else {
   throw "Invalid Runtime: $Runtime"

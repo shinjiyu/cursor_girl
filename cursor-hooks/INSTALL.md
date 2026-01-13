@@ -172,6 +172,20 @@ Hook 会按以下优先级自动选择中央服务器地址：
 ~/Library/Application Support/Ortensia/central_server.txt
 ```
 
+#### 本地配置文件（Windows 推荐路径）
+
+把中央服务器地址写入：
+
+```
+%APPDATA%\Ortensia\central_server.txt
+```
+
+备选路径：
+
+```
+%LOCALAPPDATA%\Ortensia\central_server.txt
+```
+
 内容示例：
 
 ```

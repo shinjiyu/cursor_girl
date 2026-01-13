@@ -83,10 +83,11 @@ class AgentHookHandler {
   constructor(hookName) {
     this.hookName = hookName;
     this.inputData = {};
-    this.wsServer = process.env.WS_SERVER || "ws://localhost:8765";
+    this.wsServer = resolveOrtensiaServer();
     this.logFile = getLogFilePath();
     this.logger = new Logger(this.logFile);
     this.logger.info(`🎣 [${hookName}] Agent Hook 启动`);
+    this.logger.info(`🌐 Ortensia Server: ${this.wsServer}`);
   }
 
   readInput() {
@@ -365,4 +366,45 @@ module.exports = {
   StopHook,
   getLogFilePath,
 };
+
+function readServerUrlFromFile() {
+  try {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const appData = process.env.APPDATA || "";
+    const localAppData = process.env.LOCALAPPDATA || "";
+
+    const candidates = [];
+    // macOS recommended path
+    if (home) candidates.push(path.join(home, "Library", "Application Support", "Ortensia", "central_server.txt"));
+    // Windows recommended paths
+    if (appData) candidates.push(path.join(appData, "Ortensia", "central_server.txt"));
+    if (localAppData) candidates.push(path.join(localAppData, "Ortensia", "central_server.txt"));
+    // legacy/simple paths
+    if (home) candidates.push(path.join(home, ".ortensia_server"));
+    if (home) candidates.push(path.join(home, ".config", "ortensia", "central_server.txt"));
+
+    for (const p of candidates) {
+      try {
+        if (!p) continue;
+        if (!fs.existsSync(p)) continue;
+        const url = fs.readFileSync(p, "utf8").trim();
+        if (url) return url;
+      } catch {
+        // continue
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function resolveOrtensiaServer() {
+  return (
+    process.env.WS_SERVER ||
+    process.env.ORTENSIA_SERVER ||
+    readServerUrlFromFile() ||
+    "ws://localhost:8765"
+  );
+}
 

@@ -47,18 +47,26 @@ def _read_ortensia_server_from_file() -> Optional[str]:
 
     优先尝试：
     - ~/Library/Application Support/Ortensia/central_server.txt (macOS 推荐)
+    - %APPDATA%\\Ortensia\\central_server.txt (Windows 推荐)
+    - %LOCALAPPDATA%\\Ortensia\\central_server.txt (Windows 备选)
     - ~/.ortensia_server
     - ~/.config/ortensia/central_server.txt
     """
     try:
         home = Path.home()
+        appdata = os.environ.get("APPDATA")
+        localappdata = os.environ.get("LOCALAPPDATA")
         candidates = [
             home / "Library" / "Application Support" / "Ortensia" / "central_server.txt",
+            Path(appdata) / "Ortensia" / "central_server.txt" if appdata else None,
+            Path(localappdata) / "Ortensia" / "central_server.txt" if localappdata else None,
             home / ".ortensia_server",
             home / ".config" / "ortensia" / "central_server.txt",
         ]
         for p in candidates:
             try:
+                if p is None:
+                    continue
                 if not p.exists():
                     continue
                 url = p.read_text(encoding="utf-8").strip()

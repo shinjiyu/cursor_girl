@@ -43,6 +43,20 @@ Agent Hooks 允许你监控和控制 **Cursor AI Agent** 的行为，在 Agent �
 ~/Library/Application Support/Ortensia/central_server.txt
 ```
 
+### 本地配置文件（Windows 推荐路径）
+
+把中央服务器地址写入：
+
+```
+%APPDATA%\Ortensia\central_server.txt
+```
+
+备选路径：
+
+```
+%LOCALAPPDATA%\Ortensia\central_server.txt
+```
+
 内容示例：
 
 ```
