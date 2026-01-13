@@ -105,6 +105,14 @@ class MessageType(str, Enum):
     EXECUTE_JS = "execute_js"  # 在 Cursor 中执行 JavaScript 代码
     EXECUTE_JS_RESULT = "execute_js_result"  # JavaScript 执行结果
 
+    # =========================================================================
+    # VNext: Session 事件流（多终端一致性）
+    # =========================================================================
+    INPUT_SUBMIT = "input_submit"            # Client → Server: 提交文本输入事件（服务端排序/仲裁）
+    INPUT_ACK = "input_ack"                  # Server → Client: 输入事件被接收（返回 seq）
+    CLIENT_EVENT_SUBMIT = "client_event_submit"  # Client → Server: 通用扩展事件入口（不触达 inject）
+    SESSION_EVENT = "session_event"          # Server → Clients: 会话事件广播（权威事件流）
+
 
 # ============================================================================
 # Payload 数据类定义
@@ -127,6 +135,13 @@ class RegisterPayload:
     workspace: Optional[str] = None
     ws_port: Optional[int] = None
     capabilities: Optional[List[Capability]] = None
+
+    # =========================================================================
+    # VNext: 多终端身份与会话（向后兼容，可选）
+    # =========================================================================
+    user_id: Optional[str] = None      # 逻辑用户 ID（同一人跨设备一致）
+    device_id: Optional[str] = None    # 设备/安装实例 ID（每个终端唯一）
+    session_id: Optional[str] = None   # 默认会话 ID（也可在事件级别覆盖）
 
 
 @dataclass
@@ -283,6 +298,45 @@ class CursorInputTextPayload:
     text: str  # 要输入的文本
     conversation_id: Optional[str] = None  # 目标对话ID（可选）
     execute: bool = False  # 是否立即执行（按 Enter 键）
+
+
+@dataclass
+class InputSubmitPayload:
+    """提交文本输入事件的 Payload（服务端仲裁/排序）"""
+    client_event_id: str                     # 客户端生成的幂等 ID（UUID）
+    text: str                                # 要输入的文本
+    conversation_id: Optional[str] = None    # 目标对话 ID（可选）
+    execute: bool = False                    # 是否立即执行
+    session_id: Optional[str] = None         # 会话 ID（可选；默认可用 conversation_id）
+    meta: Optional[Dict[str, Any]] = None    # 扩展元数据（可选）
+
+
+@dataclass
+class InputAckPayload:
+    """输入事件接收确认的 Payload"""
+    client_event_id: str
+    session_id: str
+    seq: int                                 # 服务端分配的单调递增序号
+    duplicate: bool = False                  # 是否为重复提交（幂等命中）
+
+
+@dataclass
+class ClientEventSubmitPayload:
+    """通用扩展事件提交（预留接口，不直达 inject）"""
+    client_event_id: str
+    session_id: str
+    event_name: str                          # 动作/渲染事件名（字符串，扩展点）
+    event_payload: Dict[str, Any]            # 事件参数（任意 JSON）
+
+
+@dataclass
+class SessionEventPayload:
+    """服务端广播的会话事件（权威事件流）"""
+    session_id: str
+    seq: int
+    event_name: str
+    event_payload: Dict[str, Any]
+    source_client_id: Optional[str] = None   # 事件来源（可选，便于追踪/回放）
 
 
 @dataclass
@@ -950,6 +1004,116 @@ class MessageBuilder:
         
         return Message(
             type=MessageType.EXECUTE_JS_RESULT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+
+    # ========================================================================
+    # VNext: Session 事件流（多终端一致性）
+    # ========================================================================
+
+    @staticmethod
+    def input_submit(
+        from_id: str,
+        to_id: str,
+        client_event_id: str,
+        text: str,
+        conversation_id: Optional[str] = None,
+        execute: bool = False,
+        session_id: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None
+    ) -> Message:
+        """创建输入事件提交消息（服务端仲裁/排序）"""
+        payload = InputSubmitPayload(
+            client_event_id=client_event_id,
+            text=text,
+            conversation_id=conversation_id,
+            execute=execute,
+            session_id=session_id,
+            meta=meta
+        )
+
+        return Message(
+            type=MessageType.INPUT_SUBMIT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+
+    @staticmethod
+    def input_ack(
+        from_id: str,
+        to_id: str,
+        client_event_id: str,
+        session_id: str,
+        seq: int,
+        duplicate: bool = False
+    ) -> Message:
+        """创建输入事件接收确认消息（返回 seq）"""
+        payload = InputAckPayload(
+            client_event_id=client_event_id,
+            session_id=session_id,
+            seq=seq,
+            duplicate=duplicate
+        )
+
+        return Message(
+            type=MessageType.INPUT_ACK,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+
+    @staticmethod
+    def client_event_submit(
+        from_id: str,
+        to_id: str,
+        client_event_id: str,
+        session_id: str,
+        event_name: str,
+        event_payload: Dict[str, Any]
+    ) -> Message:
+        """创建通用扩展事件提交消息（预留接口，不直达 inject）"""
+        payload = ClientEventSubmitPayload(
+            client_event_id=client_event_id,
+            session_id=session_id,
+            event_name=event_name,
+            event_payload=event_payload
+        )
+
+        return Message(
+            type=MessageType.CLIENT_EVENT_SUBMIT,
+            from_=from_id,
+            to=to_id,
+            timestamp=int(time.time()),
+            payload=asdict(payload)
+        )
+
+    @staticmethod
+    def session_event(
+        from_id: str,
+        to_id: str,
+        session_id: str,
+        seq: int,
+        event_name: str,
+        event_payload: Dict[str, Any],
+        source_client_id: Optional[str] = None
+    ) -> Message:
+        """创建会话事件广播（权威事件流）"""
+        payload = SessionEventPayload(
+            session_id=session_id,
+            seq=seq,
+            event_name=event_name,
+            event_payload=event_payload,
+            source_client_id=source_client_id
+        )
+
+        return Message(
+            type=MessageType.SESSION_EVENT,
             from_=from_id,
             to=to_id,
             timestamp=int(time.time()),

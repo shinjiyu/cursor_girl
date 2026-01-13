@@ -1,0 +1,62 @@
+# 简化版生产 Dockerfile（不使用 standalone 模式）
+# 如果 standalone 模式有问题，可以使用这个版本
+
+FROM node:20-alpine AS builder
+
+# 安装构建依赖
+RUN apk add --no-cache \
+    cairo-dev \
+    pango-dev \
+    jpeg-dev \
+    giflib-dev \
+    librsvg-dev \
+    pkgconfig \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# ============================================================================
+# 运行阶段
+# ============================================================================
+FROM node:20-alpine AS runner
+
+# 安装运行时依赖
+RUN apk add --no-cache \
+    cairo \
+    pango \
+    jpeg \
+    giflib \
+    librsvg \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+# 设置非 root 用户
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# 复制必要文件（标准模式）
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["npm", "start"]

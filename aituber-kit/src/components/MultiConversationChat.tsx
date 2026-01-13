@@ -13,10 +13,10 @@ export function MultiConversationChat() {
   
   return (
     <div style={{ 
-      position: 'fixed', 
-      right: 0, 
+      position: 'absolute',  // 改为 absolute，相对于父容器定位
+      left: 0,  // 从左侧开始
       top: 0, 
-      width: '50%',  // 右侧占50%
+      width: '100%',  // 占满父容器的100%宽度
       height: '100%', 
       display: 'flex', 
       flexDirection: 'column',
@@ -24,6 +24,7 @@ export function MultiConversationChat() {
       backdropFilter: 'blur(12px)',
       boxShadow: '-8px 0 24px rgba(0, 0, 0, 0.4)',
       borderLeft: '2px solid rgba(157, 78, 221, 0.3)',
+      boxSizing: 'border-box',  // 确保 padding/border 包含在宽度内
     }}>
       {/* Conversation 标签栏 */}
       <div style={{ 

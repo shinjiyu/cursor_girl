@@ -54,11 +54,28 @@ async function createAssistantWindow() {
   if (isDev) {
     // 开发模式：等待本地服务器
     await waitOn({ resources: ['http://localhost:3000'] })
-    // 加载助手页面（我们会创建一个专门的页面）
+    // 加载助手页面
     mainWindow.loadURL('http://localhost:3000/assistant')
   } else {
-    // 生产模式
-    mainWindow.loadFile(path.join(__dirname, 'out', 'assistant.html'))
+    // 生产模式：优先尝试加载静态文件，失败则回退到本地服务器
+    const staticPath = path.join(__dirname, 'out', 'assistant.html')
+    const fs = await import('fs')
+    
+    if (fs.existsSync(staticPath)) {
+      // 静态文件存在，使用 file:// 协议加载
+      mainWindow.loadFile(staticPath)
+    } else {
+      // 静态文件不存在，尝试启动本地服务器或使用远程服务器
+      console.warn('⚠️ 静态文件不存在，尝试加载本地服务器...')
+      try {
+        await waitOn({ resources: ['http://localhost:3000'], timeout: 5000 })
+        mainWindow.loadURL('http://localhost:3000/assistant')
+      } catch (error) {
+        console.error('❌ 无法连接到本地服务器，请确保 Next.js 服务器正在运行')
+        // 可以显示错误页面或提示用户
+        mainWindow.loadURL('data:text/html,<h1>应用启动失败</h1><p>请确保 Next.js 服务器正在运行</p>')
+      }
+    }
   }
 
   // 窗口准备好后显示

@@ -70,7 +70,7 @@
 | 组件 | 位置 | 职责 |
 |-----|------|------|
 | **install-v10.sh** | 安装脚本 | 注入代码到 Cursor main.js |
-| **中央 Server** | bridge/websocket_server.py | 消息路由、TTS 处理 |
+| **中央 Server** | bridge/websocket_server.py | 消息路由、会话仲裁（多端输入队列）、事件广播 |
 | **协议定义** | bridge/protocol.py | 消息类型和格式 |
 | **Inject 代码** | 嵌入 main.js | WebSocket 通信 + JS 执行 |
 
@@ -653,6 +653,23 @@ cursor-injector/
 | 变量 | 默认值 | 说明 |
 |-----|--------|------|
 | `ORTENSIA_SERVER` | `ws://localhost:8765` | 中央 Server 地址 |
+
+## 附录 C: 本地配置文件（用于 GUI 启动）
+
+当从 Finder/Dock/Spotlight 直接启动 Cursor 时，环境变量可能不会注入到 App 进程。
+注入脚本会在 `ORTENSIA_SERVER` 不可用时尝试读取本地配置文件来获取中央服务器地址。
+
+**推荐路径（macOS）**：
+
+```
+~/Library/Application Support/Ortensia/central_server.txt
+```
+
+文件内容示例（只写一行 URL）：
+
+```
+wss://mazda-commissioners-organised-perceived.trycloudflare.com/
+```
 
 设置方法：
 ```bash

@@ -15,6 +15,12 @@
     "desktop": "NEXT_PUBLIC_BACKGROUND_IMAGE_PATH=\"\" run-p dev electron",
     "assistant": "wait-on http://localhost:3000 && electron ./electron-assistant.mjs",
     "assistant:dev": "run-p dev assistant",
+    "build:electron": "npm run build:static && npm run pack:electron",
+    "build:static": "next build && next export",
+    "pack:electron": "electron-builder",
+    "pack:electron:mac": "electron-builder --mac",
+    "pack:electron:win": "electron-builder --win",
+    "pack:electron:linux": "electron-builder --linux",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -105,7 +111,12 @@
     "ts-jest": "^29.3.2",
     "typescript": "5.0.2",
     "wait-on": "^7.2.0",
-    "web-streams-polyfill": "^4.1.0"
+    "web-streams-polyfill": "^4.1.0",
+    "electron-builder": "^24.9.1"
+  },
+  "main": "electron-assistant.mjs",
+  "build": {
+    "extends": "./electron-builder.yml"
   },
   "engines": {
     "node": "^20.0.0"

@@ -1,0 +1,88 @@
+appId: com.ortensia.aituber
+productName: Ortensia AITuber
+copyright: Copyright © 2025
+
+# 构建配置
+directories:
+  output: dist
+  buildResources: build
+
+# 文件包含/排除
+files:
+  - '!**/.git*'
+  - '!**/node_modules/**/*'
+  - '!**/src/**/*'
+  - '!**/*.md'
+  - '!**/tsconfig.json'
+  - '!**/.eslintrc*'
+  - '!**/.prettierrc*'
+  - '!**/jest.config.js'
+  - '!**/next.config.js'
+  - '!**/tailwind.config.js'
+  - '!**/postcss.config.js'
+  - '!**/Dockerfile*'
+  - '!**/docker-compose*.yml'
+  - '!**/.dockerignore'
+  - 'out/**/*'
+  - 'public/**/*'
+  - 'electron-assistant.mjs'
+  - 'preload-assistant.js'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'node_modules/**/*'
+
+# macOS 配置
+mac:
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+# Windows 配置
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+
+# Linux 配置
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Utility
+  icon: build/icon.png
+
+# NSIS 配置（Windows 安装程序）
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# DMG 配置（macOS）
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# 发布配置（可选，用于自动更新）
+# publish:
+#   provider: github
+#   owner: your-username
+#   repo: your-repo

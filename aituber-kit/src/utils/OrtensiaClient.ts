@@ -32,6 +32,12 @@ export enum MessageType {
   // Cursor 输入操作
   CURSOR_INPUT_TEXT = 'cursor_input_text',  // 向 Cursor 输入文本（不执行）
   CURSOR_INPUT_TEXT_RESULT = 'cursor_input_text_result',  // 输入文本结果
+
+  // VNext: 多终端一致性（输入仲裁 / 事件流）
+  INPUT_SUBMIT = 'input_submit',
+  INPUT_ACK = 'input_ack',
+  CLIENT_EVENT_SUBMIT = 'client_event_submit',
+  SESSION_EVENT = 'session_event',
   
   // Conversation 发现
   GET_CONVERSATION_ID = 'get_conversation_id',  // 查询 conversation_id
@@ -98,7 +104,7 @@ export class OrtensiaClient {
   /**
    * 连接到 Ortensia 中央服务器
    */
-  public connect(url: string = 'ws://localhost:8765'): Promise<void> {
+  public connect(url: string = (process.env.NEXT_PUBLIC_ORTENSIA_SERVER || 'wss://mazda-commissioners-organised-perceived.trycloudflare.com/')): Promise<void> {
     return new Promise((resolve, reject) => {
       console.log(`🌸 [Ortensia] 连接到中央服务器: ${url}`)
       
@@ -404,14 +410,18 @@ export class OrtensiaClient {
    * 向 Cursor 发送文本输入请求（不执行）
    */
   public sendCursorInputText(text: string, conversationId?: string, execute: boolean = true) {
+    // VNext: 统一提交给 Server，由 Server 做 session 队列仲裁与顺序一致性
+    const clientEventId = `evt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
     const message: OrtensiaMessage = {
-      type: MessageType.CURSOR_INPUT_TEXT,
+      type: MessageType.INPUT_SUBMIT,
       from: this.clientId,
-      to: 'cursor_inject',  // 发送给 inject 客户端
+      to: 'server',
       timestamp: Date.now(),
       payload: {
+        client_event_id: clientEventId,
         text,
         conversation_id: conversationId,
+        session_id: conversationId, // 默认用 conversation_id 作为 session_id
         execute,  // 是否立即执行
       },
     }

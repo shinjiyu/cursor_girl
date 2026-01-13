@@ -20,6 +20,35 @@ except ImportError:
     print("❌ 缺少 websockets 库，请安装: pip install websockets", file=sys.stderr)
     sys.exit(1)
 
+def _read_server_url_from_file() -> str | None:
+    """
+    读取中央服务器地址（用于 GUI 启动/无环境变量场景）。
+
+    优先尝试：
+    - ~/Library/Application Support/Ortensia/central_server.txt (macOS 推荐)
+    - ~/.ortensia_server
+    - ~/.config/ortensia/central_server.txt
+    """
+    try:
+        home = Path.home()
+        candidates = [
+            home / "Library" / "Application Support" / "Ortensia" / "central_server.txt",
+            home / ".ortensia_server",
+            home / ".config" / "ortensia" / "central_server.txt",
+        ]
+        for p in candidates:
+            try:
+                if not p.exists():
+                    continue
+                url = p.read_text(encoding="utf-8").strip()
+                if url:
+                    return url
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
 
 async def send_hook_event(event_type: str, event_data: dict, server_url: str = None):
     """
@@ -34,7 +63,12 @@ async def send_hook_event(event_type: str, event_data: dict, server_url: str = N
     """
     # 获取服务器地址
     if server_url is None:
-        server_url = os.environ.get('WS_SERVER', 'ws://localhost:8765')
+        server_url = (
+            os.environ.get("WS_SERVER")
+            or os.environ.get("ORTENSIA_SERVER")
+            or _read_server_url_from_file()
+            or "ws://localhost:8765"
+        )
     
     try:
         # 连接到服务器

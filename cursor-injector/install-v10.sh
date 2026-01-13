@@ -115,11 +115,69 @@ cat > "$MAIN_JS" << 'INJECT_END'
         // ====================================================================
         // 第二部分：作为 Client 连接到中央Server
         // ====================================================================
-        
-        const CENTRAL_SERVER_URL = process.env.ORTENSIA_SERVER || 'ws://localhost:8765';
-        
-        if (process.env.ORTENSIA_SERVER) {
+        const fs = await import('fs');
+        const os = await import('os');
+        const path = await import('path');
+
+        function readCentralServerFromFile() {
+            try {
+                const home = os.homedir();
+
+                // macOS GUI 启动时 env 可能不可用，因此提供本地配置文件兜底
+                const candidates = [
+                    // 1) macOS 推荐路径
+                    path.join(home, 'Library', 'Application Support', 'Ortensia', 'central_server.txt'),
+                    // 2) 通用隐藏文件
+                    path.join(home, '.ortensia_server'),
+                    // 3) 通用 config 目录
+                    path.join(home, '.config', 'ortensia', 'central_server.txt'),
+                    // 4) 项目内（可选）
+                    path.join(process.cwd(), '.ortensia', 'central_server.txt'),
+                ];
+
+                for (const p of candidates) {
+                    try {
+                        if (!fs.existsSync(p)) continue;
+                        const raw = fs.readFileSync(p, 'utf8');
+                        const url = (raw || '').trim();
+                        if (url) {
+                            return { url, path: p };
+                        }
+                    } catch (e) {
+                        // ignore candidate read errors
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+            return null;
+        }
+
+        const DEFAULT_CENTRAL_SERVER_URL = 'ws://localhost:8765';
+        let CENTRAL_SERVER_URL = null;
+        let CENTRAL_SERVER_SOURCE = null;
+
+        if (process.env.ORTENSIA_SERVER && String(process.env.ORTENSIA_SERVER).trim()) {
+            CENTRAL_SERVER_URL = String(process.env.ORTENSIA_SERVER).trim();
+            CENTRAL_SERVER_SOURCE = 'env:ORTENSIA_SERVER';
+        } else {
+            const fileCfg = readCentralServerFromFile();
+            if (fileCfg && fileCfg.url) {
+                CENTRAL_SERVER_URL = fileCfg.url;
+                CENTRAL_SERVER_SOURCE = `file:${fileCfg.path}`;
+            }
+        }
+
+        if (!CENTRAL_SERVER_URL) {
+            CENTRAL_SERVER_URL = DEFAULT_CENTRAL_SERVER_URL;
+            CENTRAL_SERVER_SOURCE = 'default';
+        }
+
+        if (CENTRAL_SERVER_SOURCE.startsWith('env:')) {
             log(`💡 使用环境变量配置的服务器地址: ${CENTRAL_SERVER_URL}`);
+        } else if (CENTRAL_SERVER_SOURCE.startsWith('file:')) {
+            log(`💡 使用本地配置文件的服务器地址: ${CENTRAL_SERVER_URL}`);
+            log(`   配置文件: ${CENTRAL_SERVER_SOURCE.substring(5)}`);
         } else {
             log(`💡 使用默认服务器地址: ${CENTRAL_SERVER_URL}`);
         }

@@ -31,6 +31,8 @@ export default function AssistantPage() {
   const [showControls, setShowControls] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isMiniMode, setIsMiniMode] = useState(false)  // 🆕 迷你模式状态
+  const [isMobile, setIsMobile] = useState(false)  // 🆕 移动端检测
+  const [isElectron, setIsElectron] = useState(false)  // 🆕 Electron 环境检测
   const conversationStore = useConversationStore()
   const [autoChecker] = useState(() => new AutoTaskChecker())
   
@@ -68,18 +70,48 @@ export default function AssistantPage() {
     const manager = OrtensiaManager
     manager.initialize()
     
-    // 自动开启 WebSocket 外部连接模式（TTS 由服务器提供）
+    // 自动开启 WebSocket 外部连接模式（渲染由终端决定：文本/动作等）
     settingsStore.setState({
       externalLinkageMode: true,
-      // ✅ 不设置 selectVoice，使用 WebSocket 服务器的 ChatTTS
       selectLanguage: 'ja',
     })
-    console.log('✅ External linkage mode enabled (TTS: WebSocket Server - ChatTTS)')
+    console.log('✅ External linkage mode enabled')
     console.log(`✅ VRM 模型将直接使用: ${TARGET_VRM_PATH}（无需二次加载）`)
 
     // 启用外部连接模式
     settingsStore.setState({ externalLinkageMode: true })
     console.log('🔌 外部连接模式已启用')
+    
+    // 🔧 连接到中央服务器（WebSocketManager 也会连接，但这里确保连接）
+    // 注意：WebSocketManager 使用 useExternalLinkage，它也会连接
+    // 这里添加额外的连接检查，确保连接成功
+    const checkAndConnect = () => {
+      const client = manager.getClient()
+      if (client) {
+        const ortensiaServer = process.env.NEXT_PUBLIC_ORTENSIA_SERVER || 
+          'wss://mazda-commissioners-organised-perceived.trycloudflare.com/'
+        
+        if (!client.isConnected()) {
+          console.log('🔌 [Assistant] 检测到未连接，尝试连接中央服务器:', ortensiaServer)
+          client.connect(ortensiaServer)
+            .then(() => {
+              console.log('✅ [Assistant] 中央服务器连接成功')
+            })
+            .catch((error) => {
+              console.error('❌ [Assistant] 中央服务器连接失败:', error)
+            })
+        } else {
+          console.log('✅ [Assistant] 中央服务器已连接')
+        }
+      } else {
+        console.warn('⚠️ [Assistant] OrtensiaClient 未初始化，等待初始化...')
+        // 延迟重试
+        setTimeout(checkAndConnect, 500)
+      }
+    }
+    
+    // 延迟一下，确保 WebSocketManager 的 useExternalLinkage 先执行
+    setTimeout(checkAndConnect, 1000)
   }, [])
   
   // 处理接收文本
@@ -110,22 +142,64 @@ export default function AssistantPage() {
       content: text,
     })
     
-    // 播放音频（如果有）
+    // audio_file 为旧版字段：中央已去掉 TTS，端侧可自行实现渲染器
     if (audio_file) {
-      // 音频播放逻辑保持不变
-      console.log('🎵 [Assistant] 播放音频:', audio_file)
+      console.log('ℹ️ [Assistant] 收到旧版 audio_file（已废弃）:', audio_file)
     }
     
     // 🔧 修复：检查是否应该停止（同时检查事件类型和关键词）
     const autoEnabled = conversationStore.getAutoCheckEnabled(convId)
-    if (autoEnabled && autoChecker.shouldStop(text, msgEventType)) {
-      console.log(`[Auto Check] ${convId}: 检测到完成事件 (${msgEventType}) 包含停止关键词`)
-      conversationStore.setAutoCheckEnabled(convId, false)
-      conversationStore.addMessage(convId, {
-        role: 'system',
-        content: '✅ 所有任务已完成，自动检查已停止',
-        timestamp: Date.now()
-      })
+
+    if (autoEnabled) {
+      // 1) 频控熔断（避免无限循环扣费）
+      const guard = autoChecker.canTriggerCheck(convId)
+      if (!guard.ok && guard.shouldAutoStop) {
+        console.log(`🛑 [Auto Check] ${convId.substring(0, 8)}: 触发频率熔断，自动停止`)
+        conversationStore.setAutoCheckEnabled(convId, false)
+        conversationStore.addMessage(convId, {
+          role: 'system',
+          content: '🛑 自动检查触发过于频繁，已自动停止以避免无限循环',
+          timestamp: Date.now()
+        })
+        return
+      }
+
+      // 2) 只在收到“已结束/已完成”时停止（stop/afterAgentResponse 都可能出现）
+      if (autoChecker.shouldStop(text, msgEventType)) {
+        console.log(`[Auto Check] ${convId}: 命中停止关键词，自动检查已停止`)
+        conversationStore.setAutoCheckEnabled(convId, false)
+        conversationStore.addMessage(convId, {
+          role: 'system',
+          content: '✅ 所有任务已完成，自动检查已停止',
+          timestamp: Date.now()
+        })
+        return
+      }
+
+      // 3) stop 事件：触发“继续检查”提示（而不是直接停止）
+      if (msgEventType === 'stop') {
+        // 再次确认频控（未通过则不发送）
+        if (!guard.ok) {
+          console.log(`⚠️  [Auto Check] ${convId.substring(0, 8)}: 防抖/频控未通过，跳过继续检查`)
+          return
+        }
+
+        const checkPrompt = autoChecker.getCheckPrompt()
+        console.log(`📤 [Auto Check] ${convId.substring(0, 8)}: stop 触发继续检查 "${checkPrompt}"`)
+
+        conversationStore.addMessage(convId, {
+          role: 'user',
+          content: `[自动检查] ${checkPrompt}`,
+          timestamp: Date.now()
+        })
+
+        const client = OrtensiaClient.getInstance()
+        if (client) {
+          client.sendCursorInputText(checkPrompt, convId, true)
+        }
+
+        autoChecker.recordCheck(convId)
+      }
     }
   }, [conversationStore, autoChecker])
   
@@ -172,11 +246,21 @@ export default function AssistantPage() {
       return
     }
     
-    const canTrigger = autoChecker.canTriggerCheck(matchedId)
-    console.log(`🎯 [Auto Check] 是否可以触发: ${canTrigger}`)
+    const guard = autoChecker.canTriggerCheck(matchedId)
+    console.log(`🎯 [Auto Check] 是否可以触发: ${guard.ok} (reason=${guard.reason || 'none'})`)
     
-    if (!canTrigger) {
-      console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 防抖检查未通过`)
+    if (!guard.ok) {
+      if (guard.shouldAutoStop) {
+        console.log(`🛑 [Auto Check] ${matchedId.substring(0, 8)}: 触发频率/次数熔断，自动停止`)
+        conversationStore.setAutoCheckEnabled(matchedId, false)
+        conversationStore.addMessage(matchedId, {
+          role: 'system',
+          content: '🛑 自动检查触发过于频繁，已自动停止以避免无限循环',
+          timestamp: Date.now()
+        })
+      } else {
+        console.log(`⚠️  [Auto Check] ${matchedId.substring(0, 8)}: 防抖检查未通过`)
+      }
       return
     }
     
@@ -276,6 +360,31 @@ export default function AssistantPage() {
     }
   }, [handleAituberReceiveText, handleAgentCompleted, handleConversationDiscovered])
 
+  // Electron 环境检测
+  useEffect(() => {
+    const checkElectron = () => {
+      // 检测是否在 Electron 环境中
+      const hasElectronAPI = typeof window !== 'undefined' && (window as any).electronAPI
+      const isElectronUserAgent = typeof navigator !== 'undefined' && 
+        navigator.userAgent.toLowerCase().includes('electron')
+      setIsElectron(hasElectronAPI || isElectronUserAgent)
+    }
+    checkElectron()
+  }, [])
+
+  // 移动端检测
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(
+        window.innerWidth <= 768 ||
+        /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      )
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // 鼠标悬停时显示控制按钮
   const handleMouseEnter = () => {
     setShowControls(true)
@@ -297,9 +406,17 @@ export default function AssistantPage() {
         height: '100vh',
         position: 'relative',
         overflow: 'hidden',
-        background: 'rgba(0, 0, 0, 0.05)',  // 轻微背景色
+        // Electron 透明窗口优化：使用更明显的背景，避免内容被遮挡
+        background: isElectron ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.05)',
         display: 'flex',
-        flexDirection: 'row',
+        flexDirection: isMobile ? 'column' : 'row',  // 移动端垂直布局
+        // Electron 环境下的布局优化
+        boxSizing: 'border-box',
+        // 确保在 Electron 透明窗口中内容正确显示
+        ...(isElectron && {
+          WebkitAppRegion: 'no-drag',  // 默认不允许拖拽，特定区域才允许
+          pointerEvents: 'auto',
+        }),
       }}
     >
       {/* 调试信息 */}
@@ -330,21 +447,28 @@ export default function AssistantPage() {
       {/* 正常模式内容 */}
       {!isMiniMode && (
         <>
-          {/* VRM 角色显示区域（左侧） */}
+          {/* VRM 角色显示区域（左侧/顶部） */}
           <div 
             style={{
-              width: '50%',  // 左侧占50%
-              height: '100%',
+              width: isMobile ? '100%' : '50%',  // 移动端全宽，桌面端50%
+              height: isMobile ? '40%' : '100%',  // 移动端40%高度，桌面端全高
               position: 'relative',
               background: 'linear-gradient(135deg, rgba(10, 10, 20, 0.4) 0%, rgba(20, 10, 30, 0.5) 100%)',
               backdropFilter: 'blur(10px)',
-              borderRight: '2px solid rgba(157, 78, 221, 0.3)',
-              boxShadow: '2px 0 20px rgba(157, 78, 221, 0.2)',
-              // 允许拖拽窗口
-              WebkitAppRegion: 'drag' as any,
+              borderRight: isMobile ? 'none' : '2px solid rgba(157, 78, 221, 0.3)',
+              borderBottom: isMobile ? '2px solid rgba(157, 78, 221, 0.3)' : 'none',
+              boxShadow: isMobile 
+                ? '0 2px 20px rgba(157, 78, 221, 0.2)' 
+                : '2px 0 20px rgba(157, 78, 221, 0.2)',
+              // Electron 环境：允许拖拽窗口（仅桌面端非移动端）
+              // Web 环境：不允许拖拽
+              WebkitAppRegion: (isElectron && !isMobile ? 'drag' : 'no-drag') as any,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              // Electron 环境下确保内容不被遮挡
+              zIndex: isElectron ? 1 : 'auto',
+              overflow: 'hidden',
             }}
           >
             {isLoaded && <VrmViewer />}
@@ -485,20 +609,37 @@ export default function AssistantPage() {
       {/* 正常模式：聊天UI和装饰元素 */}
       {!isMiniMode && (
         <>
-          {/* 多窗口聊天UI（右侧固定显示） */}
-          <MultiConversationChat />
+          {/* 聊天区域（右侧/底部） */}
+          <div 
+            style={{
+              width: isMobile ? '100%' : '50%',  // 移动端全宽，桌面端50%
+              height: isMobile ? '60%' : '100%',  // 移动端60%高度，桌面端全高
+              position: 'relative',  // 相对定位，作为 MultiConversationChat 的定位参考
+              background: 'rgba(255, 255, 255, 0.02)',
+              backdropFilter: 'blur(5px)',
+              overflow: 'hidden',
+              // Electron 环境：确保聊天区域可交互且不被遮挡
+              WebkitAppRegion: 'no-drag' as any,
+              zIndex: isElectron ? 2 : 'auto',
+              boxSizing: 'border-box',  // 确保宽度计算正确
+            }}
+          >
+            <MultiConversationChat />
+          </div>
 
-          {/* 中间分隔线装饰 */}
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: 0,
-            width: '2px',
-            height: '100%',
-            background: 'linear-gradient(180deg, rgba(157, 78, 221, 0) 0%, rgba(157, 78, 221, 0.5) 50%, rgba(157, 78, 221, 0) 100%)',
-            pointerEvents: 'none',
-            zIndex: 10,
-          }} />
+          {/* 中间分隔线装饰（仅桌面端） */}
+          {!isMobile && (
+            <div style={{
+              position: 'absolute',
+              left: '50%',
+              top: 0,
+              width: '2px',
+              height: '100%',
+              background: 'linear-gradient(180deg, rgba(157, 78, 221, 0) 0%, rgba(157, 78, 221, 0.5) 50%, rgba(157, 78, 221, 0) 100%)',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }} />
+          )}
 
           {/* 状态指示器（左下角）*/}
           <div

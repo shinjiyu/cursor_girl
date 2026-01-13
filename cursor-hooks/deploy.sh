@@ -47,6 +47,7 @@ fi
 echo -e "${GREEN}📦 创建目录结构...${NC}"
 mkdir -p "$TARGET_DIR/hooks"
 mkdir -p "$TARGET_DIR/lib"
+mkdir -p "$TARGET_DIR/venv"
 
 # 复制文件
 echo -e "${GREEN}📦 复制 Agent Hooks...${NC}"
@@ -54,10 +55,38 @@ cp -r "$SOURCE_DIR/hooks/"* "$TARGET_DIR/hooks/"
 cp -r "$SOURCE_DIR/lib/"* "$TARGET_DIR/lib/"
 cp "$SOURCE_DIR/hooks.json" "$TARGET_DIR/"
 
+# 复制依赖定义（用于在目标机创建 venv）
+if [ -f "$SOURCE_DIR/requirements.txt" ]; then
+    cp "$SOURCE_DIR/requirements.txt" "$TARGET_DIR/"
+fi
+
 # 复制包装脚本（如果存在）
 if [ -f "$SOURCE_DIR/run_hook.sh" ]; then
     echo -e "${GREEN}📦 复制包装脚本...${NC}"
     cp "$SOURCE_DIR/run_hook.sh" "$TARGET_DIR/"
+fi
+
+# 创建独立虚拟环境（保证不同机器可用，不依赖仓库路径）
+echo -e "${GREEN}🐍 创建 Python 虚拟环境...${NC}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+fi
+
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo -e "${RED}❌ 找不到 Python 解释器（python3/python）。请先安装 Python 3。${NC}"
+    exit 1
+fi
+
+"$PYTHON_BIN" -m venv "$TARGET_DIR/venv"
+
+echo -e "${GREEN}📦 安装依赖...${NC}"
+"$TARGET_DIR/venv/bin/python" -m pip install --upgrade pip >/dev/null 2>&1 || true
+if [ -f "$TARGET_DIR/requirements.txt" ]; then
+    "$TARGET_DIR/venv/bin/python" -m pip install -r "$TARGET_DIR/requirements.txt"
+else
+    # 兜底：至少安装 websockets
+    "$TARGET_DIR/venv/bin/python" -m pip install "websockets>=12.0"
 fi
 
 # 设置可执行权限

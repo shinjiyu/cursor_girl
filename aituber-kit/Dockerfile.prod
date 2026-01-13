@@ -1,0 +1,89 @@
+# 多阶段构建：生产模式 Dockerfile
+# 使用多阶段构建减小镜像体积
+
+# ============================================================================
+# Stage 1: 构建阶段
+# ============================================================================
+FROM node:20-alpine AS builder
+
+# 安装系统依赖（Canvas 等需要）
+RUN apk add --no-cache \
+    cairo-dev \
+    pango-dev \
+    jpeg-dev \
+    giflib-dev \
+    librsvg-dev \
+    pkgconfig \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+# 复制依赖文件
+COPY package*.json ./
+
+# 安装依赖（包括 devDependencies，构建时需要）
+RUN npm ci
+
+# 复制源代码
+COPY . .
+
+# 构建 Next.js 应用（启用 standalone 模式）
+ENV NEXT_STANDALONE=true
+RUN npm run build
+
+# ============================================================================
+# Stage 2: 运行阶段
+# ============================================================================
+FROM node:20-alpine AS runner
+
+# 安装运行时依赖（Canvas 等）
+RUN apk add --no-cache \
+    cairo \
+    pango \
+    jpeg \
+    giflib \
+    librsvg \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+# 设置非 root 用户（安全）
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# 从构建阶段复制必要文件
+# Next.js standalone 模式会生成最小化的运行时
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# 复制 standalone 输出（如果启用）
+# standalone 模式会在 .next/standalone 目录生成最小化运行时
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# 注意：如果 standalone 模式未启用，需要回退到标准模式
+# 标准模式需要复制：
+# COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+# COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+# COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+
+# 设置权限
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+# 暴露端口
+EXPOSE 3000
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# 启动应用
+# standalone 模式下，server.js 在 .next/standalone 目录
+# 但复制后，server.js 应该在当前工作目录
+CMD ["node", "server.js"]

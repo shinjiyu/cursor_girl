@@ -1,0 +1,12 @@
+services:
+  ortensia-central:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: ortensia-central
+    environment:
+      - ORTENSIA_HOST=0.0.0.0
+      - ORTENSIA_PORT=8765
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
