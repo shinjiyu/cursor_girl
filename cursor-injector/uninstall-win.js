@@ -1,7 +1,7 @@
 /**
  * Ortensia Cursor Injector - Windows uninstaller
  *
- * Restores backed up main entry file and removes sidecar injector.
+ * Restores backed up main entry file.
  * Supports both loose resources/app and resources/app.asar layouts.
  */
 
@@ -80,15 +80,6 @@ function uninstallLooseApp(appRootDir) {
     fs.rmSync(backupPath, { force: true });
   } catch {
     // ignore
-  }
-
-  const injectorPath = path.join(path.dirname(mainPath), "ortensia-injector.js");
-  if (fileExists(injectorPath)) {
-    try {
-      fs.rmSync(injectorPath, { force: true });
-    } catch {
-      // ignore
-    }
   }
 
   console.log(`✅ Restored main entry: ${mainPath}`);

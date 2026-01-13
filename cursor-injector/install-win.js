@@ -6,17 +6,28 @@
  * - If resources/app/out/main.js exists: patch it directly
  * - Else if resources/app.asar exists: extract -> patch -> repack (backup original asar)
  *
- * Patch method:
+ * Patch method (same idea as macOS script):
  * - Create a backup of the target main entry file (".ortensia.backup")
- * - Prepend a small loader that requires "./ortensia-injector.js"
- * - Write ortensia-injector.js next to the main entry
+ * - Restore from backup (idempotent)
+ * - Create a new main entry file: [INJECTED_CODE] + [ORIGINAL_MAIN]
  */
 
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const LOADER = `// === ORTENSIA_LOADER_START ===\ntry { require("./ortensia-injector.js"); } catch (e) {}\n// === ORTENSIA_LOADER_END ===\n`;
+const INJECT_MARKER = "ORTENSIA_INJECT_START";
+
+function buildInjectedMain(originalMain) {
+  const injectorSrc = path.join(__dirname, "ortensia-injector.js");
+  const injected = readText(injectorSrc);
+  return (
+    `// === ${INJECT_MARKER} ===\n` +
+    injected +
+    `\n// === ${INJECT_MARKER}_ORIGINAL_MAIN ===\n` +
+    originalMain
+  );
+}
 
 function fileExists(p) {
   try {
@@ -96,22 +107,14 @@ function patchLooseApp(appRootDir) {
     copyFile(mainPath, backupPath);
   }
 
+  // Always restore from backup first (idempotent), then re-inject
   const original = readText(backupPath);
-  if (original.includes("ORTENSIA_LOADER_START") || readText(mainPath).includes("ORTENSIA_LOADER_START")) {
-    console.log("Already installed (loader marker found).");
-    return;
-  }
 
-  writeText(mainPath, LOADER + original);
+  // If current main already contains marker, we still rebuild from backup to avoid drift.
+  writeText(mainPath, buildInjectedMain(original));
 
-  // Sidecar injector placed next to main entry
-  const injectorSrc = path.join(__dirname, "ortensia-injector.js");
-  const injectorDst = path.join(path.dirname(mainPath), "ortensia-injector.js");
-  writeText(injectorDst, readText(injectorSrc));
-
-  console.log(`✅ Patched main entry: ${mainPath}`);
-  console.log(`✅ Backup created:     ${backupPath}`);
-  console.log(`✅ Injector installed: ${injectorDst}`);
+  console.log(`✅ Patched main entry (inline inject): ${mainPath}`);
+  console.log(`✅ Backup preserved:                  ${backupPath}`);
 }
 
 function withTempDir(prefix, fn) {
