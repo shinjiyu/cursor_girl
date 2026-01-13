@@ -27,6 +27,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def _read_ortensia_server_from_file() -> Optional[str]:
+    """
+    读取中央服务器地址（用于 GUI 启动/无环境变量场景）。
+
+    优先尝试：
+    - ~/Library/Application Support/Ortensia/central_server.txt (macOS 推荐)
+    - ~/.ortensia_server
+    - ~/.config/ortensia/central_server.txt
+    """
+    try:
+        home = Path.home()
+        candidates = [
+            home / "Library" / "Application Support" / "Ortensia" / "central_server.txt",
+            home / ".ortensia_server",
+            home / ".config" / "ortensia" / "central_server.txt",
+        ]
+        for p in candidates:
+            try:
+                if not p.exists():
+                    continue
+                url = p.read_text(encoding="utf-8").strip()
+                if url:
+                    return url
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
 
 class AgentHookHandler:
     """Agent Hook 处理器基类"""
@@ -37,9 +66,15 @@ class AgentHookHandler:
         self.logger = logger  # 让子类可以使用 self.logger
         
         # オルテンシア WebSocket 配置
-        self.ws_server = "ws://localhost:8765"
+        self.ws_server = (
+            os.environ.get("WS_SERVER")
+            or os.environ.get("ORTENSIA_SERVER")
+            or _read_ortensia_server_from_file()
+            or "ws://localhost:8765"
+        )
         
         logger.info(f"🎣 [{hook_name}] Agent Hook 启动")
+        logger.info(f"🌐 Ortensia Server: {self.ws_server}")
     
     def read_input(self) -> Dict[str, Any]:
         """从 stdin 读取 JSON 输入"""

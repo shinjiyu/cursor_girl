@@ -654,6 +654,23 @@ cursor-injector/
 |-----|--------|------|
 | `ORTENSIA_SERVER` | `ws://localhost:8765` | 中央 Server 地址 |
 
+## 附录 C: 本地配置文件（用于 GUI 启动）
+
+当从 Finder/Dock/Spotlight 直接启动 Cursor 时，环境变量可能不会注入到 App 进程。
+注入脚本会在 `ORTENSIA_SERVER` 不可用时尝试读取本地配置文件来获取中央服务器地址。
+
+**推荐路径（macOS）**：
+
+```
+~/Library/Application Support/Ortensia/central_server.txt
+```
+
+文件内容示例（只写一行 URL）：
+
+```
+wss://mazda-commissioners-organised-perceived.trycloudflare.com/
+```
+
 设置方法：
 ```bash
 export ORTENSIA_SERVER=ws://192.168.1.100:8765

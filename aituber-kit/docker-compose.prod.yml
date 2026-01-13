@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # Next.js 服务器（生产模式）
+  aituber-nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: aituber-nextjs
+    environment:
+      # Next.js 配置
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      
+      # 中央服务器地址（从环境变量读取，或使用默认值）
+      - NEXT_PUBLIC_ORTENSIA_SERVER=${NEXT_PUBLIC_ORTENSIA_SERVER:-ws://localhost:8765}
+      
+      # TTS 服务配置（可选，从 .env 文件读取）
+      # - GOOGLE_TTS_KEY=${GOOGLE_TTS_KEY:-}
+      # - AZURE_TTS_KEY=${AZURE_TTS_KEY:-}
+      # - AZURE_TTS_REGION=${AZURE_TTS_REGION:-}
+      
+      # Standalone 模式
+      - NEXT_STANDALONE=true
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    # 如果需要访问本地文件系统（VRM、Live2D 等资源）
+    volumes:
+      - ./public:/app/public:ro
+    env_file:
+      - .env  # 可选：从 .env 文件读取环境变量

@@ -101,9 +101,13 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
     
     client.on(MessageType.AITUBER_RECEIVE_TEXT, handler)
 
+    const ortensiaServer =
+      process.env.NEXT_PUBLIC_ORTENSIA_SERVER ||
+      'wss://mazda-commissioners-organised-perceived.trycloudflare.com/'
+
     // 连接到中央服务器（如果还没连接）
     if (!client.isConnected()) {
-      client.connect('ws://localhost:8765')
+      client.connect(ortensiaServer)
       .then(() => {
         console.log('✅ [Ortensia] 连接成功')
         homeStore.setState({ chatProcessing: false })
@@ -121,7 +125,7 @@ const useExternalLinkage = ({ handleReceiveTextFromWs }: Params) => {
         console.log('🔄 [Ortensia] 尝试重连...')
         homeStore.setState({ chatProcessing: false })
         
-        client.connect('ws://localhost:8765')
+        client.connect(ortensiaServer)
           .then(() => {
             console.log('✅ [Ortensia] 重连成功')
             // 🆕 重连后也要重新发现对话

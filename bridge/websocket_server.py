@@ -567,8 +567,22 @@ async def handle_aituber_receive_text(client_info: ClientInfo, message: Message)
     # 2. 获取所有 AITuber 客户端
     aituber_clients = registry.get_by_type('aituber_client')
     
+    # 🔍 诊断：显示当前所有已注册的客户端
+    all_clients = list(registry.clients.keys())
+    logger.info(f"🔍 [诊断] 当前已注册客户端总数: {len(all_clients)}")
+    if all_clients:
+        logger.info(f"🔍 [诊断] 已注册客户端列表:")
+        for cid in all_clients:
+            client = registry.clients.get(cid)
+            if client:
+                roles = sorted(client.client_types)
+                logger.info(f"    - {cid}: 角色={roles}")
+    
+    logger.info(f"🔍 [诊断] 查找 aituber_client 类型，找到 {len(aituber_clients)} 个客户端")
+    
     if not aituber_clients:
-        logger.warning(f"⚠️  目标客户端不存在: aituber")
+        logger.warning(f"⚠️  [AITuber] 目标客户端不存在: aituber_client")
+        logger.warning(f"⚠️  [AITuber] 消息无法转发，请确保 AITuber 客户端已连接并注册")
         return
     
     # ✨ 将 conversation_id 添加到 payload 中

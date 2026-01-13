@@ -27,6 +27,28 @@ Agent Hooks 允许你监控和控制 **Cursor AI Agent** 的行为，在 Agent �
 
 ## 🚀 快速开始
 
+## 🌐 配置中央服务器地址（推荐）
+
+优先级（从高到低）：
+1. 环境变量 `WS_SERVER`（hooks 专用）
+2. 环境变量 `ORTENSIA_SERVER`
+3. 本地配置文件（适合 GUI 启动/无环境变量场景）
+4. 默认 `ws://localhost:8765`
+
+### 本地配置文件（macOS 推荐路径）
+
+把中央服务器地址写入：
+
+```
+~/Library/Application Support/Ortensia/central_server.txt
+```
+
+内容示例：
+
+```
+wss://mazda-commissioners-organised-perceived.trycloudflare.com/
+```
+
 ### 前提条件
 
 1. **启动 Ortensia 中央服务器**（必须）：

@@ -35,12 +35,24 @@ export default async function handler(
       )
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`)
       }
 
       const data = await response.json()
       res.status(200).json({ audio: data.audioContent })
     } else {
+      // 检查是否有服务账号凭据文件路径
+      const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+      
+      if (!credentialsPath) {
+        // 没有配置任何认证方式，返回友好错误
+        console.warn('⚠️ Google TTS 未配置：需要设置 GOOGLE_TTS_KEY 或 GOOGLE_APPLICATION_CREDENTIALS')
+        return res.status(400).json({ 
+          error: 'Google TTS 未配置。请设置环境变量 GOOGLE_TTS_KEY 或 GOOGLE_APPLICATION_CREDENTIALS。详情请参考 env.template 文件。' 
+        })
+      }
+
       // Use credentials based authentication
       const client = new textToSpeech.TextToSpeechClient()
 
@@ -58,8 +70,17 @@ export default async function handler(
 
       res.status(200).json({ audio: audioContent })
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in Google Text-to-Speech:', error)
-    res.status(500).json({ error: 'Internal Server Error' })
+    
+    // 提供更友好的错误信息
+    let errorMessage = 'Google TTS 服务错误'
+    if (error?.message?.includes('Could not load the default credentials')) {
+      errorMessage = 'Google TTS 凭据未配置。请设置 GOOGLE_TTS_KEY 环境变量或配置服务账号凭据。'
+    } else if (error?.message) {
+      errorMessage = error.message
+    }
+    
+    res.status(500).json({ error: errorMessage })
   }
 }

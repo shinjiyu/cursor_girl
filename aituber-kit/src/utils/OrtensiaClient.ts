@@ -104,7 +104,7 @@ export class OrtensiaClient {
   /**
    * 连接到 Ortensia 中央服务器
    */
-  public connect(url: string = 'ws://localhost:8765'): Promise<void> {
+  public connect(url: string = (process.env.NEXT_PUBLIC_ORTENSIA_SERVER || 'wss://mazda-commissioners-organised-perceived.trycloudflare.com/')): Promise<void> {
     return new Promise((resolve, reject) => {
       console.log(`🌸 [Ortensia] 连接到中央服务器: ${url}`)
       

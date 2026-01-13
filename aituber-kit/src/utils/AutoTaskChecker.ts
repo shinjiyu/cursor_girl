@@ -1,12 +1,17 @@
 export class AutoTaskChecker {
-  private checkPrompt: string = '请检查是否还有计划中的任务可以完成，如果有请执行，如果没有，请回复"已结束"或"已完成"'
-  // 停止关键词：兼容不同 hook/模型返回文本
-  private stopKeywords: string[] = ['已结束', '已完成', '任务完成', '完成任务', '全部完成', '没有任务']
+  private checkPrompt: string =
+    '请检查是否还有计划中的任务可以完成，如果有请执行，如果没有，请回复"已结束"或"已完成"'
+
+  // ✅ 停止关键词：只接受明确的“已结束/已完成”
+  // 不要用“任务完成”等泛化文案，否则 stop 事件会导致自动检查立刻停止。
+  private stopKeywords: string[] = ['已结束', '已完成']
   private lastCheckTimes: Map<string, number> = new Map()
   private minCheckInterval: number = 5000  // 最小检查间隔5秒
   
-  // 🆕 允许触发停止检查的事件类型（只有 Agent 完成类事件才检查停止关键词）
-  private stopEventTypes: string[] = ['stop', 'afterAgentResponse']
+  // ✅ 允许触发停止检查的事件类型：
+  // 只信任 afterAgentResponse（Agent 原始输出）。
+  // 不使用 stop 事件作为停止依据，否则 stop hook 的“任务完成”提示会误触发停止。
+  private stopEventTypes: string[] = ['afterAgentResponse']
 
   // ✅ 防刷：自动检查频率/次数熔断（避免无限循环扣费）
   private checkWindowMs: number = 10 * 60_000

@@ -11,6 +11,41 @@ ws://localhost:8765
 ```
 
 ### 修改方法
+优先级（从高到低）：
+1. 环境变量 `ORTENSIA_SERVER`
+2. 本地配置文件（推荐给“直接双击启动 Cursor”的场景）
+3. 默认值 `ws://localhost:8765`
+
+---
+
+## ✅ 本地配置文件（推荐给 macOS 双击启动）
+
+当你从 Finder / Dock / Spotlight 直接启动 Cursor 时，shell 环境变量经常不会注入到 App 进程。
+此时可以使用本地配置文件来指定中央服务器地址。
+
+### 推荐路径（macOS）
+
+把中央服务器地址写入：
+
+```
+~/Library/Application Support/Ortensia/central_server.txt
+```
+
+文件内容示例（只写一行 URL）：
+
+```
+wss://mazda-commissioners-organised-perceived.trycloudflare.com/
+```
+
+### 备选路径（也会自动尝试）
+
+- `~/.ortensia_server`
+- `~/.config/ortensia/central_server.txt`
+- `<workspace>/.ortensia/central_server.txt`
+
+---
+
+## 🌿 环境变量（终端启动时可用）
 
 通过环境变量 `ORTENSIA_SERVER` 配置服务器地址。
 

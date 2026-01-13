@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # 中央服务器（WebSocket 消息路由）
+  # ============================================================================
+  ortensia-central:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: ortensia-central
+    environment:
+      - ORTENSIA_HOST=0.0.0.0
+      - ORTENSIA_PORT=8765
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+    networks:
+      - ortensia-network
+
+  # ============================================================================
+  # Next.js 服务器（UI + API 路由）
+  # ============================================================================
+  aituber-nextjs:
+    build:
+      context: ./aituber-kit
+      dockerfile: Dockerfile.prod
+    container_name: aituber-nextjs
+    environment:
+      # Next.js 配置
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      
+      # 中央服务器地址（Next.js 客户端连接）
+      # 注意：如果中央服务器在容器内，使用服务名；如果在外部，使用外部地址
+      # 容器内通信：ws://ortensia-central:8765
+      # 外部访问：wss://your-server.trycloudflare.com/
+      - NEXT_PUBLIC_ORTENSIA_SERVER=${NEXT_PUBLIC_ORTENSIA_SERVER:-ws://ortensia-central:8765}
+      
+      # TTS 服务配置（可选）
+      # - GOOGLE_TTS_KEY=${GOOGLE_TTS_KEY:-}
+      # - AZURE_TTS_KEY=${AZURE_TTS_KEY:-}
+      # - AZURE_TTS_REGION=${AZURE_TTS_REGION:-}
+      
+      # 其他环境变量
+      - NEXT_STANDALONE=true
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - ortensia-central
+    networks:
+      - ortensia-network
+    # 如果需要访问本地文件系统（VRM、Live2D 等）
+    volumes:
+      - ./aituber-kit/public:/app/public:ro
+
+networks:
+  ortensia-network:
+    driver: bridge

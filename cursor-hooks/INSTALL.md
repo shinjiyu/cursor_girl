@@ -141,34 +141,31 @@ ls -la ~/.cursor/hooks.json
 
 ## 配置选项
 
-### 修改 WebSocket 服务器地址
+### 配置中央服务器地址（推荐方式）
 
-编辑 `~/.cursor-agent/lib/agent_hook_handler.py`：
+> 不要手动编辑 `~/.cursor-agent/lib/agent_hook_handler.py` 来改地址。\n
+Hook 会按以下优先级自动选择中央服务器地址：
 
-```python
-# 第 37 行
-self.ws_server = "ws://localhost:8765"
+1. 环境变量 `WS_SERVER`（hooks 专用）
+2. 环境变量 `ORTENSIA_SERVER`
+3. 本地配置文件（推荐给 macOS 双击启动）
+4. 默认 `ws://localhost:8765`
+
+#### 本地配置文件（macOS 推荐路径）
+
+把中央服务器地址写入：
+
+```
+~/Library/Application Support/Ortensia/central_server.txt
 ```
 
-#### 场景 1: 本地开发（默认）
+内容示例：
 
-```python
-self.ws_server = "ws://localhost:8765"
+```
+wss://mazda-commissioners-organised-perceived.trycloudflare.com/
 ```
 
-#### 场景 2: 局域网服务器
-
-```python
-self.ws_server = "ws://192.168.1.100:8765"
-```
-
-#### 场景 3: 远程服务器
-
-```python
-self.ws_server = "ws://your-domain.com:8765"
-```
-
-**注意**：修改后需要重启 Cursor。
+**注意**：更改配置文件后不需要“重启 hooks”，但需要下一次 hook 触发时才会读到新值；如果你修改了 `~/.cursor/hooks.json` 或重新部署 hooks，建议完全退出 Cursor（Cmd+Q）再打开。
 
 ### 自定义日志路径
 
