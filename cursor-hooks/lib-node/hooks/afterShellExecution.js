@@ -11,7 +11,7 @@ class AfterShellExecutionHook extends AuditHook {
     super("afterShellExecution");
   }
 
-  audit() {
+  async audit() {
     const command = this.inputData.command || "";
     const output = this.inputData.output || "";
     const exitCode = typeof this.inputData.exit_code === "number" ? this.inputData.exit_code : 0;
@@ -25,12 +25,19 @@ class AfterShellExecutionHook extends AuditHook {
       ["error", "failed", "exception", "traceback"].some((k) => lowerOut.includes(k));
 
     if (hasError) {
-      this.sendToOrtensia(`命令失败：${cmdPreview}`, "sad").catch(() => {});
+      try {
+        await this.sendToOrtensia(`命令失败：${cmdPreview}`, "sad");
+      } catch {}
     } else {
-      this.sendToOrtensia(`命令完成：${cmdPreview}`, "happy").catch(() => {});
+      try {
+        await this.sendToOrtensia(`命令完成：${cmdPreview}`, "happy");
+      } catch {}
     }
   }
 }
 
-process.exit(new AfterShellExecutionHook().run());
+module.exports = (async () => {
+  const code = await new AfterShellExecutionHook().run();
+  return code;
+})();
 

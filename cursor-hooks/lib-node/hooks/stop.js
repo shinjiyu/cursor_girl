@@ -11,16 +11,22 @@ class StopAgentHook extends StopHook {
     super("stop");
   }
 
-  shouldContinue() {
+  async shouldContinue() {
     const status = this.inputData.status || "";
     const loopCount = this.inputData.loop_count || 0;
 
     if (status === "completed") {
-      this.sendToOrtensia("Agent 任务完成了！太棒了！🎉", "excited").catch(() => {});
+      try {
+        await this.sendToOrtensia("Agent 任务完成了！太棒了！🎉", "excited");
+      } catch {}
     } else if (status === "aborted") {
-      this.sendToOrtensia("Agent 任务被中止了", "neutral").catch(() => {});
+      try {
+        await this.sendToOrtensia("Agent 任务被中止了", "neutral");
+      } catch {}
     } else if (status === "error") {
-      this.sendToOrtensia("Agent 遇到错误了...别担心，我们可以再试试", "sad").catch(() => {});
+      try {
+        await this.sendToOrtensia("Agent 遇到错误了...别担心，我们可以再试试", "sad");
+      } catch {}
     }
 
     void loopCount;
@@ -28,5 +34,8 @@ class StopAgentHook extends StopHook {
   }
 }
 
-process.exit(new StopAgentHook().run());
+module.exports = (async () => {
+  const code = await new StopAgentHook().run();
+  return code;
+})();
 

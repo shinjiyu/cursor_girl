@@ -11,19 +11,26 @@ class AfterMCPExecutionHook extends AuditHook {
     super("afterMCPExecution");
   }
 
-  audit() {
+  async audit() {
     const toolName = this.inputData.tool_name || "";
     const resultJson = this.inputData.result_json || "";
     if (!toolName) return;
 
     const hasError = String(resultJson).includes('"error"') || String(resultJson).includes('"success": false');
     if (hasError) {
-      this.sendToOrtensia(`工具失败：${toolName}`, "sad").catch(() => {});
+      try {
+        await this.sendToOrtensia(`工具失败：${toolName}`, "sad");
+      } catch {}
     } else {
-      this.sendToOrtensia(`工具完成：${toolName}`, "happy").catch(() => {});
+      try {
+        await this.sendToOrtensia(`工具完成：${toolName}`, "happy");
+      } catch {}
     }
   }
 }
 
-process.exit(new AfterMCPExecutionHook().run());
+module.exports = (async () => {
+  const code = await new AfterMCPExecutionHook().run();
+  return code;
+})();
 

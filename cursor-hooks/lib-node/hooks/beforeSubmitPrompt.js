@@ -20,22 +20,29 @@ class BeforeSubmitPromptHook extends AgentHookHandler {
     [/token\s*[:=]\s*[^\s]+/gi, "Token"],
   ];
 
-  process() {
+  async process() {
     const prompt = this.inputData.prompt || "";
     if (!prompt) return { continue: true };
 
     for (const [re, name] of BeforeSubmitPromptHook.SENSITIVE_PATTERNS) {
       if (re.test(prompt)) {
-        this.sendToOrtensia(`检测到 Prompt 中可能包含${name}，请注意安全！`, "surprised").catch(() => {});
+        try {
+          await this.sendToOrtensia(`检测到 Prompt 中可能包含${name}，请注意安全！`, "surprised");
+        } catch {}
       }
     }
 
     const words = String(prompt).split(/\s+/).slice(0, 10);
     const preview = `${words.join(" ")}${words.length >= 10 ? "..." : ""}`;
-    this.sendToOrtensia(`开始新的 Agent 任务：${preview}`, "happy").catch(() => {});
+    try {
+      await this.sendToOrtensia(`开始新的 Agent 任务：${preview}`, "happy");
+    } catch {}
     return { continue: true };
   }
 }
 
-process.exit(new BeforeSubmitPromptHook().run());
+module.exports = (async () => {
+  const code = await new BeforeSubmitPromptHook().run();
+  return code;
+})();
 

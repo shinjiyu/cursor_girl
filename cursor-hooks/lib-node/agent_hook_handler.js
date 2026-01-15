@@ -191,6 +191,9 @@ class AgentHookHandler {
 
     const wsUrl = this.wsServer;
     const WebSocketImpl = globalThis.WebSocket;
+    // #region agent log (debug)
+    fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:194',message:'sendToOrtensia enter',data:{pid:process.pid,hookName:this.hookName,wsUrl,conversationId,hasWebSocket:typeof WebSocketImpl==="function"},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     if (typeof WebSocketImpl !== "function") {
       this.logger.error("❌ Node.js WebSocket 不可用（需要 Node 18+ 或提供 WebSocket 实现）");
       return;
@@ -232,27 +235,68 @@ class AgentHookHandler {
 
       const timeout = setTimeout(() => {
         this.logger.warn("⚠️  WebSocket 发送超时（跳过）");
+        // #region agent log (debug)
+        fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:239',message:'sendToOrtensia timeout',data:{pid:process.pid,hookName:this.hookName,wsUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+        try {
+          if (wsRef) wsRef.close();
+        } catch {
+          // ignore
+        }
         done();
       }, 3000);
 
+      let wsRef = null;
       try {
         const ws = new WebSocketImpl(wsUrl);
+        wsRef = ws;
+        // #region agent log (debug)
+        fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:245',message:'ws constructed',data:{pid:process.pid,hookName:this.hookName,wsUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+
+        ws.addEventListener("message", (ev) => {
+          try {
+            const raw = (ev && ev.data) || "";
+            let msgType = null;
+            try {
+              const obj = JSON.parse(typeof raw === "string" ? raw : String(raw));
+              msgType = obj && obj.type ? String(obj.type) : null;
+            } catch {
+              msgType = null;
+            }
+            // #region agent log (debug)
+            fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:263',message:'ws message received',data:{pid:process.pid,hookName:this.hookName,wsUrl,msgType},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H7'})}).catch(()=>{});
+            // #endregion
+            // 关键：等待 central 的 register_ack，再主动关闭连接，避免 "send 两条 + 立刻 close" 导致第二条丢失
+            if (msgType === "register_ack") {
+              try {
+                ws.close();
+              } catch {
+                // ignore
+              }
+            }
+          } catch {
+            // ignore
+          }
+        });
+
+        ws.addEventListener("close", () => {
+          clearTimeout(timeout);
+          done();
+        });
 
         ws.addEventListener("open", () => {
           try {
+            // #region agent log (debug)
+            fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:250',message:'ws open -> sending',data:{pid:process.pid,hookName:this.hookName,wsUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             ws.send(JSON.stringify(registerMsg));
             ws.send(JSON.stringify(messageData));
             this.logger.info("✅ 消息已发送到オルテンシア");
           } catch (e) {
             this.logger.error(`❌ 发送到オルテンシア失败: ${e && e.message ? e.message : String(e)}`);
           } finally {
-            try {
-              ws.close();
-            } catch {
-              // ignore
-            }
-            clearTimeout(timeout);
-            done();
+            // 不在这里立刻 close：等待 register_ack 再关闭（或由 timeout/error/close 收敛）
           }
         });
 
@@ -268,6 +312,9 @@ class AgentHookHandler {
         });
       } catch (e) {
         this.logger.error(`❌ WebSocket 初始化失败: ${e && e.message ? e.message : String(e)}`);
+        // #region agent log (debug)
+        fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:279',message:'ws init failed',data:{pid:process.pid,hookName:this.hookName,wsUrl,err:String(e&&e.message?e.message:e)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         clearTimeout(timeout);
         done();
       }
@@ -279,14 +326,14 @@ class AgentHookHandler {
     throw new Error("Subclasses must implement process()");
   }
 
-  run() {
+  async run() {
     const start = Date.now();
     try {
       this.logger.info("⏳ 步骤 1/3: 读取输入数据...");
       this.readInput();
 
       this.logger.info("⏳ 步骤 2/3: 执行 Hook 逻辑...");
-      const output = this.process();
+      const output = await this.process();
 
       this.logger.info("⏳ 步骤 3/3: 输出响应...");
       if (output && typeof output === "object" && Object.keys(output).length > 0) {
@@ -320,9 +367,9 @@ class PermissionHook extends AgentHookHandler {
   makeDecision() {
     throw new Error("Subclasses must implement makeDecision()");
   }
-  process() {
+  async process() {
     this.logger.info("🔐 执行权限检查...");
-    const [permission, userMsg, agentMsg] = this.makeDecision();
+    const [permission, userMsg, agentMsg] = await this.makeDecision();
     this.logger.info("🔐 权限决策结果:");
     this.logger.info(`   • 决策: ${permission}`);
     if (userMsg) this.logger.info(`   • 用户消息: ${userMsg}`);
@@ -339,9 +386,9 @@ class AuditHook extends AgentHookHandler {
   audit() {
     throw new Error("Subclasses must implement audit()");
   }
-  process() {
+  async process() {
     this.logger.info("📊 执行审计逻辑...");
-    this.audit();
+    await this.audit();
     this.logger.info("📊 审计完成");
     return {};
   }
@@ -352,8 +399,8 @@ class StopHook extends AgentHookHandler {
   shouldContinue() {
     throw new Error("Subclasses must implement shouldContinue()");
   }
-  process() {
-    const followup = this.shouldContinue();
+  async process() {
+    const followup = await this.shouldContinue();
     if (followup) return { followup_message: followup };
     return {};
   }
@@ -383,11 +430,24 @@ function readServerUrlFromFile() {
     if (home) candidates.push(path.join(home, ".ortensia_server"));
     if (home) candidates.push(path.join(home, ".config", "ortensia", "central_server.txt"));
 
+    // #region agent log (debug)
+    fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:405',message:'readServerUrlFromFile candidates',data:{pid:process.pid,homeSet:!!home,appDataSet:!!appData,localAppDataSet:!!localAppData,candidateCount:candidates.length,candidates},timestamp:Date.now(),sessionId:'debug-session',runId:'server-resolve',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
+
     for (const p of candidates) {
       try {
         if (!p) continue;
-        if (!fs.existsSync(p)) continue;
+        const exists = fs.existsSync(p);
+        // #region agent log (debug)
+        if (exists) {
+          fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:416',message:'readServerUrlFromFile path exists',data:{pid:process.pid,path:p},timestamp:Date.now(),sessionId:'debug-session',runId:'server-resolve',hypothesisId:'H4'})}).catch(()=>{});
+        }
+        // #endregion
+        if (!exists) continue;
         const url = fs.readFileSync(p, "utf8").trim();
+        // #region agent log (debug)
+        fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:425',message:'readServerUrlFromFile read',data:{pid:process.pid,path:p,url:url||null},timestamp:Date.now(),sessionId:'debug-session',runId:'server-resolve',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
         if (url) return url;
       } catch {
         // continue
@@ -400,11 +460,14 @@ function readServerUrlFromFile() {
 }
 
 function resolveOrtensiaServer() {
-  return (
-    process.env.WS_SERVER ||
-    process.env.ORTENSIA_SERVER ||
-    readServerUrlFromFile() ||
-    "ws://localhost:8765"
-  );
+  const wsEnv = process.env.WS_SERVER || "";
+  const ortEnv = process.env.ORTENSIA_SERVER || "";
+  const fileUrl = readServerUrlFromFile() || "";
+  const resolved = wsEnv || ortEnv || fileUrl || "ws://localhost:8765";
+  const source = wsEnv ? "WS_SERVER" : ortEnv ? "ORTENSIA_SERVER" : fileUrl ? "central_server.txt" : "default";
+  // #region agent log (debug)
+  fetch('http://127.0.0.1:7242/ingest/bdd4517c-4845-494b-847d-45eb44c85416',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cursor-hooks/lib-node/agent_hook_handler.js:438',message:'resolveOrtensiaServer selected',data:{pid:process.pid,source,wsEnv:wsEnv||null,ortEnv:ortEnv||null,fileUrl:fileUrl||null,resolved},timestamp:Date.now(),sessionId:'debug-session',runId:'server-resolve',hypothesisId:'H4'})}).catch(()=>{});
+  // #endregion
+  return resolved;
 }
 

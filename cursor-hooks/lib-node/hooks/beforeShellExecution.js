@@ -35,7 +35,7 @@ class BeforeShellExecutionHook extends PermissionHook {
     String.raw`docker\s+rm\s+-f`,
   ];
 
-  makeDecision() {
+  async makeDecision() {
     this.command = this.inputData.command || "";
     this.cwd = this.inputData.cwd || "";
 
@@ -53,7 +53,9 @@ class BeforeShellExecutionHook extends PermissionHook {
       if (re.test(this.command)) {
         this.logger.warn(`🚨 匹配到危险命令模式: ${pattern}`);
         this.logger.warn(`🚫 拒绝执行命令: ${this.command}`);
-        this.sendToOrtensia(`检测到危险命令！已阻止：${this.command.slice(0, 50)}...`, "angry").catch(() => {});
+        try {
+          await this.sendToOrtensia(`检测到危险命令！已阻止：${this.command.slice(0, 50)}...`, "angry");
+        } catch {}
         return ["deny", `🚫 危险命令已被阻止：${this.command}`, `命令 '${this.command}' 被安全策略阻止`];
       }
     }
@@ -65,7 +67,9 @@ class BeforeShellExecutionHook extends PermissionHook {
       if (re.test(this.command)) {
         this.logger.warn(`⚠️  匹配到风险命令模式: ${pattern}`);
         this.logger.warn(`❓ 需要用户确认: ${this.command}`);
-        this.sendToOrtensia(`检测到风险命令，需要确认：${this.command.slice(0, 50)}...`, "surprised").catch(() => {});
+        try {
+          await this.sendToOrtensia(`检测到风险命令，需要确认：${this.command.slice(0, 50)}...`, "surprised");
+        } catch {}
         return ["ask", `⚠️  风险命令需要确认：${this.command}`, null];
       }
     }
@@ -74,11 +78,16 @@ class BeforeShellExecutionHook extends PermissionHook {
     this.logger.info("🔍 步骤 3/3: 发送命令通知...");
     const cmdPreview = this.command.length > 40 ? `${this.command.slice(0, 40)}...` : this.command;
     this.logger.info(`💬 发送命令通知: ${cmdPreview}`);
-    this.sendToOrtensia(`执行命令：${cmdPreview}`, "neutral").catch(() => {});
+    try {
+      await this.sendToOrtensia(`执行命令：${cmdPreview}`, "neutral");
+    } catch {}
     this.logger.info("✅ 允许执行命令");
     return ["allow", null, null];
   }
 }
 
-process.exit(new BeforeShellExecutionHook().run());
+module.exports = (async () => {
+  const code = await new BeforeShellExecutionHook().run();
+  return code;
+})();
 

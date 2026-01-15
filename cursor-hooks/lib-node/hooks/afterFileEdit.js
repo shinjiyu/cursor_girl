@@ -23,14 +23,16 @@ class AfterFileEditHook extends AuditHook {
     ".md": ["prettier", "--write"],
   };
 
-  audit() {
+  async audit() {
     const filePath = this.inputData.file_path || "";
     if (!filePath) return;
 
     const fileName = path.basename(filePath);
     const ext = path.extname(filePath);
 
-    this.sendToOrtensia(`Agent 编辑了文件：${fileName}`, "neutral").catch(() => {});
+    try {
+      await this.sendToOrtensia(`Agent 编辑了文件：${fileName}`, "neutral");
+    } catch {}
 
     const formatter = AfterFileEditHook.FORMATTERS[ext];
     if (!formatter) return;
@@ -43,7 +45,9 @@ class AfterFileEditHook extends AuditHook {
         windowsHide: true,
       });
       if (res && res.status === 0) {
-        this.sendToOrtensia(`文件已自动格式化：${fileName}`, "happy").catch(() => {});
+        try {
+          await this.sendToOrtensia(`文件已自动格式化：${fileName}`, "happy");
+        } catch {}
       }
     } catch (e) {
       this.logger.warn(`格式化失败: ${e && e.message ? e.message : String(e)}`);
@@ -51,5 +55,8 @@ class AfterFileEditHook extends AuditHook {
   }
 }
 
-process.exit(new AfterFileEditHook().run());
+module.exports = (async () => {
+  const code = await new AfterFileEditHook().run();
+  return code;
+})();
 
